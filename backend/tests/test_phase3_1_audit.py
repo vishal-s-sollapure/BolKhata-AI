@@ -20,7 +20,7 @@ from sqlalchemy.exc import DatabaseError, OperationalError
 from sqlalchemy.orm import Session
 from unittest.mock import AsyncMock, patch
 
-from app.database.session import Base, SessionLocal, engine, init_db_triggers
+from app.database.session import SessionLocal, engine, init_db_triggers
 from app.ledger.balance import BalanceCalculator
 from app.ledger.exceptions import (
     CustomerAmbiguityError,
@@ -331,6 +331,15 @@ class TestConcurrentIdempotencyExecution:
         assert len(failures) == 1
         assert isinstance(failures[0], (IdempotencyConflictError, LedgerError))
         test_engine.dispose()
+
+        outcomes = [r1, r2]
+        successes = [o for o in outcomes if not isinstance(o, Exception)]
+        failures = [o for o in outcomes if isinstance(o, Exception)]
+
+        # One must succeed and the conflicting one must fail with IdempotencyConflictError or LedgerError
+        assert len(successes) == 1
+        assert len(failures) == 1
+        assert isinstance(failures[0], (IdempotencyConflictError, LedgerError))
 
 
 class TestHITLProposalIntegrity:
