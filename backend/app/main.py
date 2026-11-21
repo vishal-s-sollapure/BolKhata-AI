@@ -5,6 +5,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import get_settings
 from app.api.health import router as health_router
+from app.api.intent import router as intent_router
 from app.utils.logger import configure_logger
 
 settings = get_settings()
@@ -42,6 +43,7 @@ app.add_middleware(
 # Register routes
 app.include_router(health_router, prefix="")
 app.include_router(health_router, prefix="/api")
+app.include_router(intent_router, prefix="/api")
 
 
 @app.get("/", summary="Root API Information")
