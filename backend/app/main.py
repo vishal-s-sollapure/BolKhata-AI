@@ -4,7 +4,7 @@ from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from app.config.settings import get_settings
-from app.database.session import Base, SessionLocal, engine
+from app.database.session import Base, SessionLocal, engine, init_db_triggers
 import app.models  # Registers all SQLAlchemy models with Base.metadata
 from app.services.store_service import StoreService
 from app.api.health import router as health_router
@@ -23,12 +23,13 @@ async def lifespan(app: FastAPI):
     logger.info("Starting %s in [%s] mode...", settings.APP_NAME, settings.APP_ENV)
     logger.info("Host: %s:%d", settings.APP_HOST, settings.APP_PORT)
 
-    # Initialize database tables and seed development store
+    # Initialize database tables, immutability triggers, and seed development store
     try:
         Base.metadata.create_all(bind=engine)
+        init_db_triggers(engine)
         with SessionLocal() as db:
             StoreService.get_or_create_default_store(db)
-        logger.info("Database initialized successfully.")
+        logger.info("Database initialized successfully with immutability triggers.")
     except Exception as e:
         logger.error("Failed to initialize database tables: %s", str(e))
 
