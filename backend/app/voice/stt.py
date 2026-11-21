@@ -147,6 +147,8 @@ class GnaniPrismaSTTClient:
         headers = {
             "x-api-key-id": self.api_key,
             "x-model": self.config.model,
+            "language_code": self.config.language_code,
+            "lang_code": self.config.language_code,
             "x-language": self.config.language_code,
             "x-sample-rate": str(self.config.sample_rate),
             "x-format": self.config.format,
