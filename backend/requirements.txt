@@ -15,8 +15,10 @@ websockets>=12.0
 # LLM Integration (Groq SDK)
 groq>=0.9.0
 
-# Voice / Streaming Pipeline (Prepared for Phase 1+)
-pipecat-ai>=0.0.40
+# Voice / Streaming Pipeline (Gnani Prisma v3.0 & Timbre v3.0)
+pipecat-ai>=1.16.0
+pipecat-gnani>=0.6.1
+gnani-vachana>=0.11.0
 
 # Testing
 pytest>=8.2.0

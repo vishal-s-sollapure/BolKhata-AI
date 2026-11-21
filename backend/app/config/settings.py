@@ -38,9 +38,9 @@ class Settings(BaseSettings):
     GROQ_API_KEY: str = ""
     GROQ_MODEL: str = "llama-3.3-70b-versatile"
 
-    # Gnani Voice Engine (WebSocket Streaming: Prisma v3.0 STT & Timbre v3.0 TTS)
-    GNANI_PRISMA_WS_URL: str = "wss://api.gnani.ai/v3/prisma/stream"
-    GNANI_TIMBRE_WS_URL: str = "wss://api.gnani.ai/v3/timbre/stream"
+    # Gnani Voice Engine (Verified WebSocket Streaming endpoints for Prisma v3.0 STT & Timbre v3.0 TTS)
+    GNANI_PRISMA_WS_URL: str = "wss://api.vachana.ai/stt/v3/stream"
+    GNANI_TIMBRE_WS_URL: str = "wss://api.vachana.ai/api/v1/tts"
     GNANI_API_KEY: str = ""
     GNANI_TOKEN: str = ""
     GNANI_ACCESS_KEY: str = ""
