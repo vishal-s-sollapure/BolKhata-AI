@@ -1,201 +1,173 @@
-# BolKhata AI (ಬೋಲ್‌ಖಾತಾ AI / बोलखाता AI)
+# BolKhata AI 🎙️📖
 
 > **"Your Kirana Store. Your Voice. Your Digital Khata."**
 
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.115+-009688.svg?logo=fastapi&logoColor=white)](https://fastapi.tiangolo.com)
-[![Python](https://img.shields.io/badge/Python-3.11+-3776AB.svg?logo=python&logoColor=white)](https://python.org)
-[![React](https://img.shields.io/badge/React-18+-61DAFB.svg?logo=react&logoColor=black)](https://react.dev)
-[![TypeScript](https://img.shields.io/badge/TypeScript-5+-3178C6.svg?logo=typescript&logoColor=white)](https://typescriptlang.org)
-[![Vite](https://img.shields.io/badge/Vite-5+-646CFF.svg?logo=vite&logoColor=white)](https://vitejs.dev)
-[![Tailwind CSS](https://img.shields.io/badge/Tailwind_CSS-3+-38B2AC.svg?logo=tailwind-css&logoColor=white)](https://tailwindcss.com)
-
-A production-minded, multilingual AI-powered digital ledger designed specifically for Indian kirana storekeepers (*vyaparigalu* / *vyapari*). BolKhata AI enables retail merchants to manage customer credit (*udhaar*), repayments, and outstanding balances using natural voice commands in **Kannada**, **Hindi**, **English**, and natural code-mixed speech.
+BolKhata AI is a production-minded, multilingual voice-operated digital ledger designed specifically for Indian kirana storekeepers (retail merchants). It enables shopkeepers to record customer credit (*udhaar*), log customer repayments, and query outstanding balances using natural voice commands in **Kannada**, **Hindi**, **English**, and Indian code-mixed speech.
 
 ---
 
-## 1. Key Highlights & Safety Architecture
+## 🌟 Key Capabilities & Architectural Principles
 
-- **Multilingual Push-To-Talk Voice Interface**: Native support for Kannada (ಕನ್ನಡ), Hindi (हिन्दी), English, and Indian code-mixing (Kanglish / Hinglish).
-- **Strict Non-Destructive Ledger Pipeline**:
-  1. **Voice Input** $\to$ Audio streamed to **Gnani Prisma v3.0** via WebSocket.
-  2. **Intent Parsing** $\to$ **Groq LLM** extracts structured `TransactionProposal` schemas. *The LLM has zero direct database permissions and never writes SQL.*
-  3. **Merchant Confirmation (HITL)** $\to$ Shopkeeper confirms the parsed credit/payment proposal on screen or via voice.
-  4. **Deterministic Ledger Engine** $\to$ Only the backend ledger service updates financial records in SQLite with idempotency UUIDs and a tamper-evident audit history.
-  5. **Spoken Confirmation** $\to$ Spoken response synthesized via **Gnani Timbre v3.0** WebSocket interface.
+- **Push-To-Talk Voice Interaction**: Designed for noisy retail store environments.
+- **Multilingual & Code-Mixing**: First-class support for native Kannada (`kn`), Hindi (`hi`), Indian English (`en-IN`), and regional code-mixing.
+- **Strict Human-In-The-Loop (HITL) Safety**:
+  - LLMs **only** generate structured `TransactionProposal` schemas.
+  - The LLM is **strictly forbidden** from writing SQL or modifying balances directly.
+  - Every financial transaction requires merchant confirmation before committing.
+  - The deterministic ledger engine guarantees balance mathematical integrity, idempotency, and audit trails.
+- **Enterprise-Grade Voice Streaming**: Gnani Prisma v3.0 (STT) and Gnani Timbre v3.0 (TTS) via WebSocket streaming.
 
 ---
 
-## 2. Monorepo Organization
+## 🏗️ Monorepo Structure
 
 ```
 BolKhata-AI/
 ├── backend/
 │   ├── app/
-│   │   ├── api/            # Health, Transaction, and WebSocket endpoints
-│   │   ├── config/         # Pydantic BaseSettings & environment validation
-│   │   ├── database/       # SQLAlchemy engine & session factory (SQLite)
-│   │   ├── models/         # Database models (KiranaStore, Customer, KhataEntry)
+│   │   ├── api/            # API endpoints & health router
+│   │   ├── config/         # Pydantic BaseSettings & env parsing
+│   │   ├── database/       # SQLAlchemy engine & session factory
+│   │   ├── models/         # Database models (KiranaStore, Customer, KhataEntry, Audit)
 │   │   ├── schemas/        # Pydantic schemas (Proposals, Confirmations, Balances)
-│   │   ├── ledger/         # Deterministic ledger calculation engine
-│   │   ├── voice/          # Gnani Prisma v3.0 & Timbre v3.0 WebSocket streaming
+│   │   ├── ledger/         # Deterministic ledger transaction engine
+│   │   ├── voice/          # Gnani Prisma v3.0 STT & Timbre v3.0 TTS WebSocket connectors
 │   │   ├── agent/          # Groq LLM multilingual intent parser
-│   │   ├── services/       # Domain business services
-│   │   ├── utils/          # Structured logging & security sanitizers
-│   │   └── main.py         # FastAPI application entry point
-│   ├── tests/              # Backend pytest test suite (health, api, contracts)
-│   ├── requirements.txt    # Python dependencies
-│   └── .env.example        # Backend environment template
-├── frontend/
-│   ├── src/
-│   │   ├── App.tsx         # BolKhata UI dashboard & Push-To-Talk interface
-│   │   ├── main.tsx        # React entry point
-│   │   └── index.css       # Tailwind CSS styles
-│   ├── index.html          # HTML entry point
-│   ├── package.json        # Frontend scripts and dependencies
-│   ├── tailwind.config.js  # Tailwind theme configuration
-│   └── vite.config.ts      # Vite bundler & reverse proxy setup
+│   │   ├── services/       # Domain business logic & customer management
+│   │   ├── utils/          # Structured logging & secret sanitization
+│   │   └── main.py         # FastAPI application entrypoint
+│   ├── tests/              # Backend test suite (Pytest, HTTPX)
+│   ├── requirements.txt    # Python 3.11+ dependencies
+│   └── .env.example        # Backend environment variables template
+├── frontend/               # React 18/19 + Vite + TypeScript + Tailwind CSS
 ├── docs/
-│   └── architecture.md     # Architectural design & safety specifications
-├── tests/
-│   └── test_monorepo.py    # Monorepo safety & structure verification tests
-├── .gitignore              # Comprehensive Git ignore rules
+│   └── architecture.md     # System architecture & safety guarantees specification
+├── tests/                  # Monorepo level structure and security tests
+├── .env.example            # Root environment template
+├── .gitignore              # Comprehensive git ignore policy (secrets, db, node_modules)
 ├── pytest.ini              # Pytest configuration
-└── README.md               # Project documentation
+└── README.md               # Project documentation & setup instructions
 ```
 
 ---
 
-## 3. Prerequisites
+## 🛠️ Technology Stack
 
-- **Python**: Version `3.11` or higher (tested on Python `3.12.10`)
-- **Node.js**: Version `20.18.0` or higher
-- **npm**: Version `10.0.0` or higher
-
----
-
-## 4. Quickstart Guide
-
-### Backend Setup
-
-1. **Navigate to the backend directory and configure the environment**:
-   ```bash
-   cd backend
-   cp .env.example .env
-   ```
-
-2. **Create and activate a virtual environment**:
-   ```bash
-   # Windows (PowerShell)
-   python -m venv .venv
-   .venv\Scripts\Activate.ps1
-
-   # Linux / macOS
-   python3 -m venv .venv
-   source .venv/bin/activate
-   ```
-
-3. **Install dependencies**:
-   ```bash
-   pip install -r requirements.txt
-   ```
-
-4. **Run backend automated tests**:
-   ```bash
-   # From root directory
-   pytest
-   ```
-
-5. **Start the FastAPI backend server**:
-   ```bash
-   # From backend directory
-   uvicorn app.main:app --host 0.0.0.0 --port 8000 --reload
-
-   # Or from root directory
-   uvicorn app.main:app --app-dir backend --host 0.0.0.0 --port 8000 --reload
-   ```
-   - API Root: [http://localhost:8000/](http://localhost:8000/)
-   - Health Check: [http://localhost:8000/health](http://localhost:8000/health)
-   - Interactive Swagger Docs: [http://localhost:8000/docs](http://localhost:8000/docs)
+| Component | Technology | Version | Purpose |
+|---|---|---|---|
+| **Frontend** | React, TypeScript, Vite, Tailwind CSS | React 18+, Vite 5+ | Fast, touch-friendly merchant UI |
+| **Backend** | Python, FastAPI, Uvicorn | Python 3.11+, FastAPI 0.115+ | Asynchronous REST & WebSocket server |
+| **Database** | SQLite + SQLAlchemy ORM | SQLAlchemy 2.0+ | Lightweight transactional digital ledger |
+| **Speech STT** | Gnani Prisma v3.0 | WebSocket Streaming | Real-time multilingual voice transcription |
+| **Speech TTS** | Gnani Timbre v3.0 | WebSocket Streaming | Real-time Indian language audio feedback |
+| **Intent LLM** | Groq (Llama 3.3 70B Versatile) | Groq SDK | Structured transaction proposal generation |
+| **Testing** | Pytest, Pytest-asyncio, HTTPX | Pytest 9+ | Automated unit, API, and architectural tests |
 
 ---
 
-### Frontend Setup
+## 🚀 Quickstart & Setup Instructions
 
-1. **Navigate to the frontend directory**:
-   ```bash
-   cd frontend
-   ```
+### 1. Prerequisites
+- **Python 3.11+** (tested with Python 3.12)
+- **Node.js v20+** and **npm**
+- **Git**
 
-2. **Install dependencies**:
-   ```bash
-   npm install
-   ```
+### 2. Environment Configuration
+Copy `.env.example` to `.env` in the root or `backend/` directory:
 
-3. **Start the Vite development server**:
-   ```bash
-   npm run dev
-   ```
-   Open your browser at [http://localhost:5173/](http://localhost:5173/).
+```bash
+cp .env.example .env
+```
 
-4. **Build for production and test preview**:
-   ```bash
-   npm run build
-   npm run preview
-   ```
+> **Security Note:** Never commit `.env` to version control. The repository `.gitignore` automatically blocks `.env*` and `*.db` files.
+
+### 3. Backend Setup
+
+```bash
+# Navigate to repository root
+# Create a Python virtual environment
+python -m venv backend/.venv
+
+# Activate the virtual environment
+# Windows (PowerShell):
+backend\.venv\Scripts\Activate.ps1
+# Linux / macOS:
+source backend/.venv/bin/activate
+
+# Install dependencies
+pip install -r backend/requirements.txt
+
+# Run backend test suite
+python -m pytest
+
+# Start the FastAPI backend server
+python -m uvicorn app.main:app --app-dir backend --reload --port 8000
+```
+
+The backend will start at `http://127.0.0.1:8000`.
+- Health Check: `http://127.0.0.1:8000/health`
+- Interactive API Docs: `http://127.0.0.1:8000/docs`
+
+### 4. Frontend Setup
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install npm dependencies
+npm install
+
+# Start Vite development server
+npm run dev
+```
+
+The frontend will run at `http://localhost:5173`.
 
 ---
 
-## 5. Technology Stack
+## 🧪 Running Tests
 
-| Layer | Component | Specification |
-|---|---|---|
-| **Frontend** | React 18, TypeScript, Tailwind CSS, Vite | Fast, responsive merchant interface with push-to-talk |
-| **Backend** | Python 3.12+, FastAPI, Uvicorn | Asynchronous high-performance REST and WebSocket server |
-| **Streaming Pipeline** | Pipecat AI | Real-time audio streaming orchestration |
-| **Speech-To-Text (STT)** | Gnani Prisma v3.0 | Low-latency Kannada, Hindi, and English WebSocket stream |
-| **Speech-Synthesis (TTS)**| Gnani Timbre v3.0 | Natural-sounding regional speech WebSocket stream |
-| **Language AI** | Groq (Llama 3.3 70B Versatile) | Structured transaction proposal generation (no DB writes) |
-| **Ledger & DB** | SQLite + SQLAlchemy ORM | Deterministic balance calculations, unique IDs, audit log |
-| **Testing** | Pytest, Pytest-Asyncio, HTTPX | Contract and API test automation |
+Run the complete test suite across backend and monorepo structure:
 
----
+```bash
+backend\.venv\Scripts\python -m pytest -v
+```
 
-## 6. Environment Configuration
-
-Copy `.env.example` to `.env` (never commit real credentials). Key settings:
-
-```ini
-APP_ENV=development
-DEBUG=True
-APP_HOST=0.0.0.0
-APP_PORT=8000
-DATABASE_URL=sqlite:///./bolkhata.db
-
-# Groq LLM Key (used for intent extraction only)
-GROQ_API_KEY=your_groq_api_key_here
-GROQ_MODEL=llama-3.3-70b-versatile
-
-# Gnani Voice Streaming Credentials (WebSocket interfaces)
-GNANI_PRISMA_WS_URL=wss://api.gnani.ai/v3/prisma/stream
-GNANI_TIMBRE_WS_URL=wss://api.gnani.ai/v3/timbre/stream
-GNANI_API_KEY=your_gnani_api_key_here
-GNANI_TOKEN=your_gnani_token_here
-GNANI_ACCESS_KEY=your_gnani_access_key_here
-
-DEFAULT_LANGUAGE=kannada
-LOG_LEVEL=INFO
+Expected output:
+```
+backend/tests/test_health.py::test_root_endpoint PASSED
+backend/tests/test_health.py::test_health_endpoint PASSED
+backend/tests/test_health.py::test_api_health_endpoint PASSED
+tests/test_monorepo.py::test_no_env_committed PASSED
+tests/test_monorepo.py::test_monorepo_structure PASSED
+5 passed
 ```
 
 ---
 
-## 7. Phase 0 Verification Status
+## 🔒 Transaction Safety Specification
 
-- [x] Monorepo directory structure established (`backend/`, `frontend/`, `docs/`, `tests/`)
-- [x] Backend Python 3.11+ dependencies configured & installed
-- [x] React + Vite + TypeScript + Tailwind CSS configured & built
-- [x] Environment configuration with Pydantic settings & `.env.example` templates
-- [x] Comprehensive `.gitignore` protecting secrets, SQLite DBs, and virtual environments
-- [x] FastAPI `/health` and root `/` endpoints verified live with HTTP 200
-- [x] React UI verified live with Vite preview & health badge
-- [x] Automated tests (Pytest) passing with 100% success rate
-- [x] Git tracking initialized with clean commit
+1. **Deterministic Ledger Engine**:
+   - Financial balances are updated **exclusively** by the ledger service within database transactions.
+   - LLMs never execute SQL statements or modify balances directly.
+2. **Idempotency & Deduplication**:
+   - Every transaction proposal is assigned a unique UUID.
+   - Repeated voice inputs or double-tap confirmations are deduplicated.
+3. **Auditable History**:
+   - Full history of original voice transcript, proposed values, merchant confirmation timestamp, and balance delta is maintained.
+
+---
+
+## 📋 Phase 0 Completion Status
+
+- [x] Monorepo directory structure established (`backend/`, `frontend/`, `docs/`, `tests/`).
+- [x] Python dependencies configured and verified in virtual environment.
+- [x] React + Vite + TypeScript + Tailwind CSS configured and built.
+- [x] Pydantic `BaseSettings` environment configuration with secret safety.
+- [x] `.env.example` created with all required configuration variables.
+- [x] Comprehensive `.gitignore` protecting secrets, virtualenvs, databases, and logs.
+- [x] FastAPI `/health` endpoint implemented and verified.
+- [x] Health check and monorepo structural tests passing (5/5 tests passing).
+- [x] Production build for frontend verified (`npm run build`).
+- [x] Initial Git tracking and commits configured.
+
