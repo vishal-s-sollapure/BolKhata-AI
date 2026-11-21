@@ -167,17 +167,26 @@ class TestConcurrentIdempotencyExecution:
 
     def test_real_concurrent_identical_commits_produce_exactly_one_entry(
         self,
+        db_session: Session,
         test_store: KiranaStore,
         test_customer: Customer,
     ):
         """5 simultaneous concurrent threads commit the exact same proposal."""
-        # Use an isolated Session for staging
-        session = SessionLocal()
+        bind = db_session.get_bind()
+        from sqlalchemy.orm import sessionmaker
+        session_factory = sessionmaker(bind=bind, autocommit=False, autoflush=False)
+
+        store_id = str(test_store.id)
+        customer_id = str(test_customer.id)
+        customer_name = str(test_customer.customer_name)
+
+        session = session_factory()
         service = LedgerService()
         staged = service.stage_proposal(
-            store_id=test_store.id,
+            store_id=store_id,
             request=StageProposalRequest(
-                customer_name=test_customer.customer_name,
+                customer_name=customer_name,
+                customer_id=customer_id,
                 intent=IntentType.ADD_CREDIT,
                 amount=Decimal("340.00"),
                 proposal_id="concurrent_prop_01",
@@ -192,14 +201,14 @@ class TestConcurrentIdempotencyExecution:
         errors = []
 
         def worker_commit():
-            worker_session = SessionLocal()
+            worker_session = session_factory()
             try:
                 commit_req = CommitProposalRequest(
                     proposal_id=staged.proposal_id,
                     confirmed=True,
                     idempotency_key=shared_key,
                 )
-                res = service.commit_proposal(test_store.id, commit_req, worker_session)
+                res = service.commit_proposal(store_id, commit_req, worker_session)
                 return res
             except Exception as e:
                 return e
@@ -233,35 +242,43 @@ class TestConcurrentIdempotencyExecution:
             assert r.resulting_balance == Decimal("340.00")
 
         # Verify in database: exactly 1 KhataEntry was created
-        verify_session = SessionLocal()
+        verify_session = session_factory()
         db_entries = (
             verify_session.query(KhataEntry)
-            .filter(KhataEntry.store_id == test_store.id, KhataEntry.idempotency_key == shared_key)
+            .filter(KhataEntry.store_id == store_id, KhataEntry.idempotency_key == shared_key)
             .all()
         )
         assert len(db_entries) == 1
 
         balance = BalanceCalculator.calculate_customer_balance(
-            test_store.id, test_customer.id, verify_session
+            store_id, customer_id, verify_session
         )
         assert balance.outstanding_balance == Decimal("340.00")
         verify_session.close()
 
     def test_concurrent_conflicting_payloads_are_safely_rejected(
         self,
+        db_session: Session,
         test_store: KiranaStore,
         test_customer: Customer,
     ):
         """Simultaneous requests with same idempotency key but conflicting amounts must reject."""
+        bind = db_session.get_bind()
+        from sqlalchemy.orm import sessionmaker
+        session_factory = sessionmaker(bind=bind, autocommit=False, autoflush=False)
+
+        store_id = str(test_store.id)
+        customer_id = str(test_customer.id)
+
         service = LedgerService()
         shared_key = "concurrent_conflict_key"
 
         def worker_credit(amount: str):
-            s = SessionLocal()
+            s = session_factory()
             try:
                 return service.record_credit(
-                    store_id=test_store.id,
-                    customer_id=test_customer.id,
+                    store_id=store_id,
+                    customer_id=customer_id,
                     amount=Decimal(amount),
                     idempotency_key=shared_key,
                     db=s,

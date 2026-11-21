@@ -22,11 +22,13 @@ def db_session():
     """Provides an isolated, in-memory SQLite database session for each test function."""
     engine = create_engine(
         "sqlite:///:memory:",
-        connect_args={"check_same_thread": False},
+        connect_args={"check_same_thread": False, "timeout": 30},
         poolclass=StaticPool,
     )
 
     Base.metadata.create_all(bind=engine)
+    from app.database.session import init_db_triggers
+    init_db_triggers(engine)
     TestingSessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
     session = TestingSessionLocal()
 
