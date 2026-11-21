@@ -1,7 +1,7 @@
 """Application settings and environment validation using Pydantic."""
 
 from functools import lru_cache
-from typing import List, Union
+from typing import Any, List, Union
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
 import json
@@ -51,6 +51,16 @@ class Settings(BaseSettings):
 
     # Logging
     LOG_LEVEL: str = "INFO"
+
+    @field_validator("DEBUG", mode="before")
+    @classmethod
+    def parse_debug(cls, value: Any) -> bool:
+        if isinstance(value, str):
+            clean = value.strip().lower()
+            if clean in ("release", "prod", "production", "false", "0", "no", "off"):
+                return False
+            return clean in ("true", "1", "yes", "t", "enable", "enabled", "debug", "dev")
+        return bool(value)
 
     @field_validator("CORS_ORIGINS", mode="before")
     @classmethod
