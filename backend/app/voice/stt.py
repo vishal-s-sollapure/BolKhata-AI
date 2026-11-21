@@ -199,11 +199,10 @@ class GnaniPrismaSTTClient:
             else:
                 self._connected = True
 
-        except websockets.exceptions.InvalidStatusCode as e:
-            if e.status_code in (401, 403):
-                raise GnaniAuthenticationError(f"Gnani STT authentication failed (HTTP {e.status_code})")
-            raise GnaniConnectionError(f"Prisma v3.0 connection failed with status {e.status_code}: {e}")
         except Exception as e:
+            err_str = str(e)
+            if "401" in err_str or "403" in err_str or (hasattr(e, "status_code") and e.status_code in (401, 403)):
+                raise GnaniAuthenticationError(f"Gnani STT authentication failed (Unauthorized / Invalid GNANI_API_KEY): {e}")
             if isinstance(e, (GnaniAuthenticationError, GnaniUnsupportedLanguageError)):
                 raise
             raise GnaniConnectionError(f"Failed to connect to Prisma v3.0 WebSocket: {e}")
