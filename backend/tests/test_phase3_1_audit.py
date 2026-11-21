@@ -15,12 +15,12 @@ import uuid
 from decimal import Decimal
 import pytest
 from fastapi.testclient import TestClient
-from sqlalchemy import text
+from sqlalchemy import create_engine, text
 from sqlalchemy.exc import DatabaseError, OperationalError
 from sqlalchemy.orm import Session
 from unittest.mock import AsyncMock, patch
 
-from app.database.session import SessionLocal, engine, init_db_triggers
+from app.database.session import Base, SessionLocal, engine, init_db_triggers
 from app.ledger.balance import BalanceCalculator
 from app.ledger.exceptions import (
     CustomerAmbiguityError,
@@ -165,35 +165,48 @@ class TestDatabaseLevelImmutability:
 class TestConcurrentIdempotencyExecution:
     """Verifies thread-safe execution under simultaneous concurrent requests."""
 
-    def test_real_concurrent_identical_commits_produce_exactly_one_entry(
-        self,
-        db_session: Session,
-        test_store: KiranaStore,
-        test_customer: Customer,
-    ):
+    def test_real_concurrent_identical_commits_produce_exactly_one_entry(self, tmp_path):
         """5 simultaneous concurrent threads commit the exact same proposal."""
-        bind = db_session.get_bind()
+        db_path = tmp_path / "concurrent_test.db"
+        test_engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        Base.metadata.create_all(bind=test_engine)
+        init_db_triggers(test_engine)
         from sqlalchemy.orm import sessionmaker
-        session_factory = sessionmaker(bind=bind, autocommit=False, autoflush=False)
+        session_factory = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
 
-        store_id = str(test_store.id)
-        customer_id = str(test_customer.id)
-        customer_name = str(test_customer.customer_name)
+        # Setup store and customer
+        init_session = session_factory()
+        store_id = "00000000-0000-0000-0000-000000000001"
+        cust_id = str(uuid.uuid4())
+        store = KiranaStore(id=store_id, store_name="Store", owner_name="Owner", is_active=True)
+        cust = Customer(
+            id=cust_id,
+            store_id=store_id,
+            customer_name="Ramesh Kumar",
+            normalized_name="ramesh kumar",
+            is_active=True,
+        )
+        init_session.add_all([store, cust])
+        init_session.commit()
+        init_session.close()
 
-        session = session_factory()
         service = LedgerService()
+        stage_session = session_factory()
         staged = service.stage_proposal(
             store_id=store_id,
             request=StageProposalRequest(
-                customer_name=customer_name,
-                customer_id=customer_id,
+                customer_name="Ramesh Kumar",
+                customer_id=cust_id,
                 intent=IntentType.ADD_CREDIT,
                 amount=Decimal("340.00"),
                 proposal_id="concurrent_prop_01",
             ),
-            db=session,
+            db=stage_session,
         )
-        session.close()
+        stage_session.close()
 
         shared_key = "concurrent_key_01"
         num_threads = 5
@@ -251,24 +264,38 @@ class TestConcurrentIdempotencyExecution:
         assert len(db_entries) == 1
 
         balance = BalanceCalculator.calculate_customer_balance(
-            store_id, customer_id, verify_session
+            store_id, cust_id, verify_session
         )
         assert balance.outstanding_balance == Decimal("340.00")
         verify_session.close()
+        test_engine.dispose()
 
-    def test_concurrent_conflicting_payloads_are_safely_rejected(
-        self,
-        db_session: Session,
-        test_store: KiranaStore,
-        test_customer: Customer,
-    ):
+    def test_concurrent_conflicting_payloads_are_safely_rejected(self, tmp_path):
         """Simultaneous requests with same idempotency key but conflicting amounts must reject."""
-        bind = db_session.get_bind()
+        db_path = tmp_path / "concurrent_conflict.db"
+        test_engine = create_engine(
+            f"sqlite:///{db_path}",
+            connect_args={"check_same_thread": False, "timeout": 30},
+        )
+        Base.metadata.create_all(bind=test_engine)
+        init_db_triggers(test_engine)
         from sqlalchemy.orm import sessionmaker
-        session_factory = sessionmaker(bind=bind, autocommit=False, autoflush=False)
+        session_factory = sessionmaker(bind=test_engine, autocommit=False, autoflush=False)
 
-        store_id = str(test_store.id)
-        customer_id = str(test_customer.id)
+        init_session = session_factory()
+        store_id = "00000000-0000-0000-0000-000000000001"
+        cust_id = str(uuid.uuid4())
+        store = KiranaStore(id=store_id, store_name="Store", owner_name="Owner", is_active=True)
+        cust = Customer(
+            id=cust_id,
+            store_id=store_id,
+            customer_name="Ramesh Kumar",
+            normalized_name="ramesh kumar",
+            is_active=True,
+        )
+        init_session.add_all([store, cust])
+        init_session.commit()
+        init_session.close()
 
         service = LedgerService()
         shared_key = "concurrent_conflict_key"
@@ -278,7 +305,7 @@ class TestConcurrentIdempotencyExecution:
             try:
                 return service.record_credit(
                     store_id=store_id,
-                    customer_id=customer_id,
+                    customer_id=cust_id,
                     amount=Decimal(amount),
                     idempotency_key=shared_key,
                     db=s,
@@ -303,6 +330,7 @@ class TestConcurrentIdempotencyExecution:
         assert len(successes) == 1
         assert len(failures) == 1
         assert isinstance(failures[0], (IdempotencyConflictError, LedgerError))
+        test_engine.dispose()
 
 
 class TestHITLProposalIntegrity:
