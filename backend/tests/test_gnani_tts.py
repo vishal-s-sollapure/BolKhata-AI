@@ -163,7 +163,8 @@ class TestTimbreV3TTSIntegration:
     @pytest.mark.asyncio
     async def test_live_tts_synthesis(self):
         """Tests live synthesis with Timbre v3.0 in Kannada and Hindi."""
-        api_key = os.getenv("GNANI_API_KEY", "")
+        from app.config.settings import get_settings
+        api_key = get_settings().GNANI_API_KEY
         if not api_key or api_key.startswith("your_"):
             pytest.skip("Skipping live TTS integration test: valid GNANI_API_KEY not set")
 

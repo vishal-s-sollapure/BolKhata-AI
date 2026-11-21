@@ -222,7 +222,8 @@ class TestPrismaV3STTIntegration:
     @pytest.mark.asyncio
     async def test_live_stt_connection(self):
         """Tests live WebSocket handshake with Prisma v3.0."""
-        api_key = os.getenv("GNANI_API_KEY", "")
+        from app.config.settings import get_settings
+        api_key = get_settings().GNANI_API_KEY
         if not api_key or api_key.startswith("your_"):
             pytest.skip("Skipping live STT integration test: valid GNANI_API_KEY not set")
 
