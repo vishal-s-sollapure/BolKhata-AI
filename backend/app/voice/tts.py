@@ -129,7 +129,7 @@ class GnaniTimbreTTSClient:
         ws_url: Optional[str] = None,
     ):
         settings = get_settings()
-        self.api_key = api_key or settings.GNANI_API_KEY
+        self.api_key = settings.GNANI_API_KEY if api_key is None else api_key
         self.config = config or TimbreV3TTSConfig()
         self.config.validate()
 
