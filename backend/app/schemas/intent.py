@@ -1,5 +1,6 @@
 """Pydantic schemas for AI intent parsing and transaction proposals in BolKhata AI."""
 
+import uuid
 from decimal import Decimal
 from enum import Enum
 from typing import Optional
@@ -10,8 +11,11 @@ class IntentType(str, Enum):
     """Supported user voice intent types in BolKhata AI."""
     ADD_CREDIT = "ADD_CREDIT"
     RECORD_PAYMENT = "RECORD_PAYMENT"
+    LOG_PAYMENT = "LOG_PAYMENT"
     CHECK_BALANCE = "CHECK_BALANCE"
+    QUERY_BALANCE = "QUERY_BALANCE"
     LIST_RECENT_TRANSACTIONS = "LIST_RECENT_TRANSACTIONS"
+    LIST_DUES = "LIST_DUES"
     UNKNOWN = "UNKNOWN"
 
 
@@ -35,6 +39,10 @@ class TransactionProposal(BaseModel):
     IMPORTANT: This represents a proposed financial action awaiting explicit
     merchant confirmation. It NEVER directly mutates the database.
     """
+    proposal_id: str = Field(
+        default_factory=lambda: str(uuid.uuid4()),
+        description="Unique proposal identifier UUIDv4",
+    )
     intent: IntentType = Field(..., description="Categorized user intent")
     customer_name: Optional[str] = Field(None, description="Preserved customer name or identifier")
     amount: Optional[Decimal] = Field(None, description="Monetary transaction amount in INR")
@@ -42,6 +50,10 @@ class TransactionProposal(BaseModel):
     language: Optional[str] = Field(None, description="Language code of source transcript (e.g. kn-IN, hi-IN, en-IN)")
     confidence: float = Field(..., ge=0.0, le=1.0, description="Model parsing confidence score (0.0 to 1.0)")
     requires_clarification: bool = Field(False, description="Whether merchant clarification is needed before confirming")
+    requires_confirmation: bool = Field(
+        True,
+        description="Human-In-The-Loop requirement: every proposal requires explicit merchant confirmation before ledger commit",
+    )
     clarification_question: Optional[str] = Field(None, description="Clarification question to ask the shopkeeper if needed")
     summary: str = Field(..., description="Human-readable summary of the proposed transaction")
     reasoning_code: str = Field(..., description="Machine-readable reasoning code explaining the proposal")
@@ -80,8 +92,8 @@ class TransactionProposal(BaseModel):
             cleaned = self.customer_name.strip()
             self.customer_name = cleaned if cleaned else None
 
-        # Rule 1: ADD_CREDIT and RECORD_PAYMENT require both customer_name and amount
-        if self.intent in (IntentType.ADD_CREDIT, IntentType.RECORD_PAYMENT):
+        # Rule 1: ADD_CREDIT, RECORD_PAYMENT, LOG_PAYMENT require both customer_name and amount
+        if self.intent in (IntentType.ADD_CREDIT, IntentType.RECORD_PAYMENT, IntentType.LOG_PAYMENT):
             action_desc = "credit" if self.intent == IntentType.ADD_CREDIT else "payment"
             if not self.customer_name:
                 self.requires_clarification = True
@@ -92,16 +104,16 @@ class TransactionProposal(BaseModel):
                 self.reasoning_code = ReasoningCode.MISSING_AMOUNT.value
                 self.clarification_question = f"What is the {action_desc} amount for {self.customer_name}?"
 
-        # Rule 2: CHECK_BALANCE requires customer_name and no amount
-        elif self.intent == IntentType.CHECK_BALANCE:
+        # Rule 2: CHECK_BALANCE / QUERY_BALANCE requires customer_name and no amount
+        elif self.intent in (IntentType.CHECK_BALANCE, IntentType.QUERY_BALANCE):
             if not self.customer_name:
                 self.requires_clarification = True
                 self.reasoning_code = ReasoningCode.MISSING_CUSTOMER_NAME.value
                 self.clarification_question = "Which customer's balance would you like to check?"
             self.amount = None  # Force amount to None for balance queries
 
-        # Rule 3: LIST_RECENT_TRANSACTIONS does not require customer or amount
-        elif self.intent == IntentType.LIST_RECENT_TRANSACTIONS:
+        # Rule 3: LIST_RECENT_TRANSACTIONS / LIST_DUES does not require customer or amount
+        elif self.intent in (IntentType.LIST_RECENT_TRANSACTIONS, IntentType.LIST_DUES):
             self.amount = None
 
         # Rule 4: UNKNOWN must never be executable
@@ -121,11 +133,11 @@ class TransactionProposal(BaseModel):
             return False
         if self.intent == IntentType.UNKNOWN:
             return False
-        if self.intent in (IntentType.ADD_CREDIT, IntentType.RECORD_PAYMENT):
+        if self.intent in (IntentType.ADD_CREDIT, IntentType.RECORD_PAYMENT, IntentType.LOG_PAYMENT):
             return bool(self.customer_name and self.amount and self.amount > Decimal("0"))
-        if self.intent == IntentType.CHECK_BALANCE:
+        if self.intent in (IntentType.CHECK_BALANCE, IntentType.QUERY_BALANCE):
             return bool(self.customer_name)
-        if self.intent == IntentType.LIST_RECENT_TRANSACTIONS:
+        if self.intent in (IntentType.LIST_RECENT_TRANSACTIONS, IntentType.LIST_DUES):
             return True
         return False
 

@@ -559,6 +559,7 @@ class TestLedgerSafetyGuarantee:
 # 5. Live Groq Integration Test (Runs if GROQ_API_KEY is configured)
 # ==============================================================================
 
+@pytest.mark.integration
 @pytest.mark.skipif(
     not settings.GROQ_API_KEY or not settings.GROQ_API_KEY.startswith("gsk_"),
     reason="GROQ_API_KEY is not configured or is a placeholder.",
