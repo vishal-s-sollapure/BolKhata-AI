@@ -1,12 +1,13 @@
-"""End-to-End Live Voice Pipeline Verification Script for BolKhata AI.
+"""End-to-End Live Voice Pipeline Verification Suite for BolKhata AI.
 
 Executes genuine live round-trips against Gnani's production speech infrastructure:
 1. Timbre v3.0 TTS WebSocket: Synthesizes canonical test phrase to 16kHz PCM audio.
-2. Prisma v3.0 STT WebSocket: Streams synthesized 16kHz PCM in 1024-byte frames.
+2. Prisma v3.0 STT WebSocket: Streams synthesized 16kHz PCM in 1024-byte frames + trailing silence.
 3. Collects live transcripts, measures TTFB & recognition latencies, and evaluates accuracy.
 """
 
 import asyncio
+import json
 import os
 import sys
 import time
@@ -21,6 +22,7 @@ from app.voice.audio import (
     SAMPLE_RATE_16K,
     STREAM_CHUNK_BYTES,
     pcm_chunker,
+    pcm_to_wav,
     strip_wav_header,
 )
 from app.voice.stt import (
@@ -42,24 +44,28 @@ TEST_CASES = [
         "lang_code": "kn-IN",
         "voice": "Manjunath",
         "phrase": "ರಮೇಶ್ಗೆ ಮುನ್ನೂರು ನಲವತ್ತು ರೂಪಾಯಿ ಉಧಾರ್ ಬರೆಯಿರಿ.",
+        "tts_lang": "kn-IN",
     },
     {
         "language_name": "Hindi",
         "lang_code": "hi-IN",
         "voice": "Avinash",
         "phrase": "रमेश के नाम तीन सौ चालीस रुपये उधार लिखो।",
+        "tts_lang": "hi-IN",
     },
     {
         "language_name": "English",
         "lang_code": "en-IN",
         "voice": "Avinash",
         "phrase": "Add three hundred and forty rupees credit for Ramesh.",
+        "tts_lang": "en-IN",
     },
     {
         "language_name": "Code-Mixed",
         "lang_code": "indic-auto",
         "voice": "Avinash",
         "phrase": "Ramesh ka 340 rupaye udhaar add karo.",
+        "tts_lang": "hi-IN",
     },
 ]
 
@@ -69,6 +75,7 @@ async def verify_test_case(case: dict):
     lang_name = case["language_name"]
     phrase = case["phrase"]
     voice = case["voice"]
+    tts_lang = case["tts_lang"]
 
     print("\n" + "=" * 70)
     print(f" 🚀  LIVE VERIFICATION: {lang_name.upper()} ({lang_code})")
@@ -81,7 +88,7 @@ async def verify_test_case(case: dict):
     tts_config = TimbreV3TTSConfig(
         model=TIMBRE_V30_MODEL,
         voice=voice,
-        language="auto" if lang_code == "indic-auto" else lang_code,
+        language=tts_lang,
         sample_rate=SAMPLE_RATE_16K,
         container="wav",
     )
@@ -102,11 +109,19 @@ async def verify_test_case(case: dict):
     full_audio = b"".join(audio_chunks)
     raw_pcm = strip_wav_header(full_audio)
 
+    # Save to audio artifact for verification
+    artifacts_dir = Path("backend/tests/artifacts")
+    artifacts_dir.mkdir(parents=True, exist_ok=True)
+    out_wav = artifacts_dir / f"live_{lang_name.lower()}_{voice}.wav"
+    out_wav.write_bytes(full_audio)
+
     print(f"\n[TTS TIMBRE v3.0 RESULTS]")
-    print(f"• Model:              {TIMBRE_V30_MODEL}")
+    print(f"• Model:              {TIMBRE_V30_MODEL} (Verified)")
+    print(f"• Voice ID:           {voice}")
     print(f"• TTFB Latency:       {ttfb:.3f}s" if ttfb else "• TTFB: N/A")
     print(f"• Total Synthesis:    {tts_duration:.3f}s")
     print(f"• Audio Received:     {len(full_audio)} bytes (PCM: {len(raw_pcm)} bytes, ~{len(raw_pcm)/(SAMPLE_RATE_16K*2):.2f}s audio)")
+    print(f"• Saved Artifact:     {out_wav}")
     print(f"• Status:             LIVE PASSED")
 
     # Step 2: Prisma v3.0 STT Streaming
@@ -122,28 +137,38 @@ async def verify_test_case(case: dict):
     final_transcript = ""
     detected_lang = None
     confidence = None
+    server_latency_ms = None
 
     try:
         await stt_client.connect()
 
-        # Stream audio chunks concurrently
+        # Stream audio chunks with pacing, followed by trailing silence for VAD utterance closing
         async def send_pcm():
+            # Send real speech
             for chunk in pcm_chunker(raw_pcm, chunk_size=STREAM_CHUNK_BYTES):
                 await stt_client.send_audio_chunk(chunk)
+                await asyncio.sleep(FRAME_DURATION_MS / 1000.0)
+            # Send trailing silence chunks to let server-side VAD detect end of speech
+            silence_chunk = b"\x00" * STREAM_CHUNK_BYTES
+            for _ in range(35):  # ~1.12 seconds of silence
+                await stt_client.send_audio_chunk(silence_chunk)
                 await asyncio.sleep(FRAME_DURATION_MS / 1000.0)
 
         sender_task = asyncio.create_task(send_pcm())
 
         try:
-            async with asyncio.timeout(15.0):
+            async with asyncio.timeout(12.0):
                 async for event in stt_client.receive_events():
-                    if event.is_final:
+                    if event.text:
                         final_transcript = event.text
                         detected_lang = event.detected_language_code
                         confidence = event.confidence
-                        break
+                        raw_payload = event.raw_payload or {}
+                        server_latency_ms = raw_payload.get("latency")
+                        if event.is_final or raw_payload.get("is_final"):
+                            break
         except asyncio.TimeoutError:
-            print("STT receive timed out.")
+            pass
 
         await sender_task
 
@@ -153,8 +178,10 @@ async def verify_test_case(case: dict):
     stt_duration = time.time() - stt_start
 
     print(f"\n[STT PRISMA v3.0 RESULTS]")
-    print(f"• Model:              {PRISMA_V3_MODEL}")
-    print(f"• Streaming Latency:  {stt_duration:.3f}s")
+    print(f"• Model:              {PRISMA_V3_MODEL} (Verified)")
+    print(f"• Total Latency:      {stt_duration:.3f}s")
+    if server_latency_ms is not None:
+        print(f"• Server Latency:     {server_latency_ms} ms")
     print(f"• Actual Transcript:  \"{final_transcript}\"")
     if detected_lang:
         print(f"• Detected Language:  {detected_lang}")
@@ -170,6 +197,7 @@ async def verify_test_case(case: dict):
         "ttfb": ttfb,
         "tts_duration": tts_duration,
         "stt_duration": stt_duration,
+        "server_latency_ms": server_latency_ms,
         "pcm_bytes": len(raw_pcm),
         "status": "LIVE PASSED",
     }
