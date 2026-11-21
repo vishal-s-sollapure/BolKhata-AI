@@ -7,6 +7,7 @@ from decimal import Decimal
 from typing import List, Optional, Tuple
 
 from sqlalchemy import func
+from sqlalchemy.exc import IntegrityError
 from sqlalchemy.orm import Session
 
 from app.ledger.balance import BalanceCalculator
@@ -170,18 +171,34 @@ class LedgerService:
         now = datetime.now(timezone.utc)
         expires_at = now + timedelta(minutes=self.proposal_ttl_minutes)
 
-        # Try to pre-resolve customer if one exists
+        # Try to pre-resolve customer if one exists or if explicitly provided
         clean_name = request.customer_name.strip()
-        matched_customer = (
-            db.query(Customer)
-            .filter(
+        customer_id = None
+        if request.customer_id:
+            cust = (
+                db.query(Customer)
+                .filter(Customer.id == request.customer_id, Customer.store_id == store_id)
+                .first()
+            )
+            if not cust:
+                raise CustomerNotFoundError(
+                    f"Customer '{request.customer_id}' not found in store '{store_id}'."
+                )
+            if not cust.is_active:
+                raise InactiveCustomerError(f"Customer '{cust.customer_name}' is inactive.")
+            customer_id = cust.id
+            clean_name = cust.customer_name
+        else:
+            cust_query = db.query(Customer).filter(
                 Customer.store_id == store_id,
                 Customer.normalized_name == clean_name.lower(),
                 Customer.is_active == True,
             )
-            .first()
-        )
-        customer_id = matched_customer.id if matched_customer else None
+            if request.phone_number:
+                cust_query = cust_query.filter(Customer.phone_number == request.phone_number)
+            matches = cust_query.all()
+            if len(matches) == 1:
+                customer_id = matches[0].id
 
         summary = request.summary or (
             f"Add ₹{amount:.2f} credit for {clean_name}"
@@ -239,6 +256,64 @@ class LedgerService:
             requires_confirmation=pending.requires_confirmation,
             created_at=pending.created_at,
             expires_at=pending.expires_at,
+        )
+
+    # -------------------------------------------------------------------------
+    # Proposal Rejection (HITL Step 1b)
+    # -------------------------------------------------------------------------
+
+    def reject_proposal(
+        self,
+        store_id: str,
+        proposal_id: str,
+        db: Session,
+        reason: Optional[str] = None,
+    ) -> PendingProposalResponse:
+        """Explicitly cancels / rejects a pending proposal before it can be committed."""
+        self._verify_store(store_id, db)
+
+        proposal = (
+            db.query(PendingProposal)
+            .filter(
+                PendingProposal.proposal_id == proposal_id,
+                PendingProposal.store_id == store_id,
+            )
+            .first()
+        )
+        if not proposal:
+            raise ProposalNotFoundError(f"Proposal '{proposal_id}' not found in store '{store_id}'.")
+
+        if proposal.status == "COMMITTED":
+            raise ProposalAlreadyCommittedError(
+                f"Proposal '{proposal_id}' is already committed and cannot be rejected."
+            )
+
+        proposal.status = "REJECTED"
+        audit = AuditLog(
+            id=str(uuid.uuid4()),
+            store_id=store_id,
+            actor_type="merchant",
+            action="PROPOSAL_REJECTED",
+            entity_type="PendingProposal",
+            entity_id=proposal.id,
+            metadata_json=json.dumps({"proposal_id": proposal_id, "reason": reason}),
+        )
+        db.add(audit)
+        db.commit()
+        db.refresh(proposal)
+
+        return PendingProposalResponse(
+            proposal_id=proposal.proposal_id,
+            store_id=proposal.store_id,
+            customer_name=proposal.customer_name,
+            intent=proposal.intent,
+            amount=proposal.amount,
+            currency=proposal.currency,
+            summary=proposal.summary,
+            status=proposal.status,
+            requires_confirmation=proposal.requires_confirmation,
+            created_at=proposal.created_at,
+            expires_at=proposal.expires_at,
         )
 
     # -------------------------------------------------------------------------
@@ -436,6 +511,37 @@ class LedgerService:
             db.commit()
             db.refresh(khata_entry)
 
+        except IntegrityError as e:
+            db.rollback()
+            logger.info("IntegrityError during proposal commit (concurrent race handled): %s", str(e))
+            existing_entry, is_replay = IdempotencyEngine.check_idempotency(
+                store_id=store_id,
+                idempotency_key=idempotency_key,
+                expected_customer_id=customer.id,
+                expected_entry_type=entry_type,
+                expected_amount=amount,
+                expected_currency=proposal.currency,
+                db=db,
+            )
+            if is_replay and existing_entry:
+                balance = BalanceCalculator.calculate_customer_balance(store_id, customer.id, db)
+                return LedgerCommitResponse(
+                    transaction_id=existing_entry.id,
+                    store_id=store_id,
+                    customer_id=customer.id,
+                    customer_name=customer.customer_name,
+                    entry_type=existing_entry.entry_type,
+                    amount=amount,
+                    currency=existing_entry.currency,
+                    resulting_balance=balance.outstanding_balance,
+                    total_credit=balance.total_credit,
+                    total_payment=balance.total_payment,
+                    created_at=existing_entry.created_at,
+                    is_duplicate=True,
+                    proposal_id=proposal.proposal_id,
+                    idempotency_key=existing_entry.idempotency_key,
+                )
+            raise LedgerError(f"Database integrity violation during commit: {str(e)}") from e
         except Exception as e:
             db.rollback()
             logger.exception("Database transaction failed during proposal commit: %s", str(e))
@@ -574,6 +680,37 @@ class LedgerService:
             db.commit()
             db.refresh(entry)
 
+        except IntegrityError as e:
+            db.rollback()
+            logger.info("IntegrityError during direct transaction (concurrent race handled): %s", str(e))
+            existing_entry, is_replay = IdempotencyEngine.check_idempotency(
+                store_id=store_id,
+                idempotency_key=idempotency_key,
+                expected_customer_id=customer.id,
+                expected_entry_type=entry_type_str,
+                expected_amount=amount_quantized,
+                expected_currency="INR",
+                db=db,
+            )
+            if is_replay and existing_entry:
+                balance = BalanceCalculator.calculate_customer_balance(store_id, customer.id, db)
+                return LedgerCommitResponse(
+                    transaction_id=existing_entry.id,
+                    store_id=store_id,
+                    customer_id=customer.id,
+                    customer_name=customer.customer_name,
+                    entry_type=existing_entry.entry_type,
+                    amount=amount_quantized,
+                    currency="INR",
+                    resulting_balance=balance.outstanding_balance,
+                    total_credit=balance.total_credit,
+                    total_payment=balance.total_payment,
+                    created_at=existing_entry.created_at,
+                    is_duplicate=True,
+                    proposal_id=proposal_id,
+                    idempotency_key=idempotency_key,
+                )
+            raise LedgerError(f"Database integrity violation during direct transaction: {str(e)}") from e
         except Exception as e:
             db.rollback()
             logger.exception("Failed direct transaction commit: %s", str(e))

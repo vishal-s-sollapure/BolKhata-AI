@@ -74,6 +74,39 @@ def stage_proposal(
 
 
 @router.post(
+    "/proposals/{proposal_id}/reject",
+    response_model=PendingProposalResponse,
+    status_code=status.HTTP_200_OK,
+    summary="Reject / cancel a pending proposal",
+    description="Marks a pending proposal as REJECTED so it can never be committed to the ledger.",
+)
+def reject_proposal(
+    proposal_id: str,
+    reason: Optional[str] = Query(None, description="Optional rejection reason"),
+    current_store: KiranaStore = Depends(get_current_store),
+    db: Session = Depends(get_db),
+) -> PendingProposalResponse:
+    """Explicitly cancels a pending proposal."""
+    try:
+        return ledger_service.reject_proposal(
+            store_id=current_store.id,
+            proposal_id=proposal_id,
+            db=db,
+            reason=reason,
+        )
+    except ProposalNotFoundError as e:
+        raise HTTPException(status_code=status.HTTP_404_NOT_FOUND, detail=str(e))
+    except ProposalAlreadyCommittedError as e:
+        raise HTTPException(status_code=status.HTTP_409_CONFLICT, detail=str(e))
+    except Exception as e:
+        logger.exception("Failed to reject proposal: %s", str(e))
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail="Failed to reject proposal.",
+        )
+
+
+@router.post(
     "/commit",
     response_model=LedgerCommitResponse,
     status_code=status.HTTP_200_OK,
