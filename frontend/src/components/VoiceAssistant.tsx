@@ -1,27 +1,39 @@
 /**
- * Push-To-Talk Voice Assistant Component.
- * Implements browser microphone capture, audio playback preview, quick Indic voice utterances,
- * intent parsing via Groq LLM, server-side proposal staging, and HITL confirmation card display.
+ * Push-To-Talk Voice Assistant Component with Real-Time Streaming & HITL Confirmation.
+ *
+ * Implements:
+ * - Real-time bidirectional streaming over WebSocket (/api/v1/voice/stream)
+ * - 16kHz S16LE PCM microphone audio capture & downsampling
+ * - Real-time partial transcript streaming as words are spoken
+ * - Automatic Groq LLM intent parsing & proposal staging
+ * - Immediate Gnani Timbre v3.0 localized TTS audio confirmation with interruption support
+ * - HITL Proposal Card for explicit Merchant Confirmation before any ledger mutation
+ * - Read-only query response card for balance checks with 0 ledger side-effects
+ * - Clarification prompt cards for unknown or ambiguous intents
+ * - Quick Indic voice command pills and text input fallback
  */
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import {
   Mic,
   Square,
-  RotateCcw,
   Sparkles,
-  Info,
   Send,
   AlertCircle,
   Volume2,
+  VolumeX,
+  HelpCircle,
+  CheckCircle2,
+  Radio,
 } from 'lucide-react';
-import { useAudioRecorder } from '../hooks/useAudioRecorder';
 import { useStore } from '../context/StoreContext';
+import { useVoiceWebSocket } from '../hooks/useVoiceWebSocket';
 import { apiClient, ApiError } from '../api/client';
 import {
   CustomerDisambiguationCandidate,
   LedgerCommitResponse,
   PendingProposalResponse,
+  SupportedLanguage,
   TransactionProposal,
 } from '../types/api';
 import { TranscriptPreview } from './TranscriptPreview';
@@ -34,20 +46,43 @@ interface QuickExample {
   text: string;
 }
 
+const LANG_CODE_MAP: Record<SupportedLanguage, string> = {
+  kn: 'kn-IN',
+  hi: 'hi-IN',
+  en: 'en-IN',
+};
+
 export const VoiceAssistant: React.FC = () => {
-  const { t, language, addToast } = useStore();
-  const recorder = useAudioRecorder();
+  const { t, language, storeId, addToast } = useStore();
+  const langCode = LANG_CODE_MAP[language] || 'kn-IN';
+
+  // Initialize real-time WebSocket streaming hook
+  const voiceWs = useVoiceWebSocket({
+    storeId,
+    language: langCode,
+    autoConnect: false,
+  });
 
   const [customTranscript, setCustomTranscript] = useState('');
-  const [isProcessing, setIsProcessing] = useState(false);
+  const [isProcessingManual, setIsProcessingManual] = useState(false);
   const [activeProposal, setActiveProposal] = useState<TransactionProposal | null>(null);
   const [stagedProposal, setStagedProposal] = useState<PendingProposalResponse | null>(null);
   const [lastParsedTranscript, setLastParsedTranscript] = useState<string | null>(null);
-  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [manualErrorMessage, setManualErrorMessage] = useState<string | null>(null);
 
   // Ambiguity state
   const [ambiguousCustomer, setAmbiguousCustomer] = useState<string | null>(null);
   const [disambiguationCandidates, setDisambiguationCandidates] = useState<CustomerDisambiguationCandidate[]>([]);
+
+  // Synchronize WebSocket events to active proposal state
+  useEffect(() => {
+    if (voiceWs.proposalReady) {
+      setActiveProposal(voiceWs.proposalReady.proposal);
+      setStagedProposal(voiceWs.proposalReady.staged_proposal);
+      setLastParsedTranscript(voiceWs.finalTranscript || voiceWs.proposalReady.proposal.summary);
+      setAmbiguousCustomer(null);
+    }
+  }, [voiceWs.proposalReady, voiceWs.finalTranscript]);
 
   // Indic sample utterances
   const quickExamples: QuickExample[] = [
@@ -88,34 +123,32 @@ export const VoiceAssistant: React.FC = () => {
     },
   ];
 
-  // Filter examples based on current UI language
   const relevantExamples = quickExamples.filter(
     (ex) => ex.lang === language || ex.lang === 'en'
   );
 
-  // Send a transcript to the backend intent parser and stage it
+  // Send a manual transcript or example pill to backend
   const handleProcessTranscript = async (textToProcess: string) => {
     const cleanText = textToProcess.trim();
     if (!cleanText) {
-      setErrorMessage('Please provide or speak a voice command.');
+      setManualErrorMessage('Please provide or speak a voice command.');
       return;
     }
 
-    setIsProcessing(true);
-    setErrorMessage(null);
+    setIsProcessingManual(true);
+    setManualErrorMessage(null);
+    voiceWs.clearProposal();
     setActiveProposal(null);
     setStagedProposal(null);
     setAmbiguousCustomer(null);
 
     try {
-      // 1. Authoritative Intent Parsing via Groq LLM
-      const parseRes = await apiClient.parseIntent(cleanText, 'indic-auto');
+      const parseRes = await apiClient.parseIntent(cleanText, langCode);
       setLastParsedTranscript(cleanText);
       setActiveProposal(parseRes.proposal);
 
       const prop = parseRes.proposal;
 
-      // 2. If proposal is executable financial intent (ADD_CREDIT or LOG_PAYMENT), stage it on the server
       if (
         (prop.intent === 'ADD_CREDIT' || prop.intent === 'LOG_PAYMENT' || prop.intent === 'RECORD_PAYMENT') &&
         prop.customer_name &&
@@ -134,24 +167,23 @@ export const VoiceAssistant: React.FC = () => {
           setStagedProposal(staged);
         } catch (stageErr: unknown) {
           if (stageErr instanceof ApiError && stageErr.status === 409) {
-            // Check for customer ambiguity
             await checkCustomerAmbiguity(prop.customer_name);
           } else {
             const msg = stageErr instanceof Error ? stageErr.message : 'Failed to stage proposal';
-            setErrorMessage(msg);
+            setManualErrorMessage(msg);
           }
         }
       }
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Voice intent parsing failed';
-      setErrorMessage(msg);
+      setManualErrorMessage(msg);
       addToast({
         type: 'error',
         title: 'Parsing Error',
         message: msg,
       });
     } finally {
-      setIsProcessing(false);
+      setIsProcessingManual(false);
     }
   };
 
@@ -178,7 +210,7 @@ export const VoiceAssistant: React.FC = () => {
     if (!activeProposal || !lastParsedTranscript) return;
 
     setAmbiguousCustomer(null);
-    setIsProcessing(true);
+    setIsProcessingManual(true);
 
     try {
       const staged = await apiClient.stageProposal({
@@ -199,16 +231,16 @@ export const VoiceAssistant: React.FC = () => {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to stage proposal';
-      setErrorMessage(msg);
+      setManualErrorMessage(msg);
     } finally {
-      setIsProcessing(false);
+      setIsProcessingManual(false);
     }
   };
 
   const handleCreateNewCustomerForProposal = async (name: string, phone?: string) => {
     if (!activeProposal || !lastParsedTranscript) return;
 
-    setIsProcessing(true);
+    setIsProcessingManual(true);
     setAmbiguousCustomer(null);
 
     try {
@@ -235,18 +267,22 @@ export const VoiceAssistant: React.FC = () => {
       });
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : 'Failed to create customer';
-      setErrorMessage(msg);
+      setManualErrorMessage(msg);
     } finally {
-      setIsProcessing(false);
+      setIsProcessingManual(false);
     }
   };
 
-  // Mic Button Toggle
-  const handleMicToggle = async () => {
-    if (recorder.recordingState === 'RECORDING') {
-      await recorder.stopRecording();
+  // Push-To-Talk Handlers (Click or Hold)
+  const isStreamingRecording = voiceWs.status === 'recording';
+  const isStreamingProcessing = voiceWs.status === 'processing';
+  const isGlobalProcessing = isProcessingManual || isStreamingProcessing;
+
+  const handleMicMouseDown = async () => {
+    if (isStreamingRecording) {
+      voiceWs.stopStreaming();
     } else {
-      await recorder.startRecording();
+      await voiceWs.startStreaming();
     }
   };
 
@@ -255,44 +291,55 @@ export const VoiceAssistant: React.FC = () => {
       {/* Voice Assistant Hero Banner */}
       <div className="bg-white rounded-3xl border border-stone-200/90 p-6 sm:p-8 shadow-sm space-y-6">
         <div className="text-center max-w-xl mx-auto space-y-2">
+          <div className="inline-flex items-center gap-1.5 px-3 py-1 bg-amber-50 border border-amber-200 rounded-full text-xs font-bold text-amber-800">
+            <Radio className="h-3.5 w-3.5 text-amber-600 animate-pulse" />
+            <span>Real-time Voice Streaming (Gnani Prisma v3.0)</span>
+          </div>
           <h2 className="text-2xl sm:text-3xl font-extrabold text-stone-900 tracking-tight">
             {t.voice.pressToTalk}
           </h2>
           <p className="text-sm text-stone-600">
-            Record customer credit (udhaar) or payments (jama) with your voice in Kannada, Hindi, or English.
+            Hold or tap the microphone to speak your transaction in Kannada, Hindi, or English.
           </p>
         </div>
 
-        {/* Central Push-To-Talk Button with Visual Feedback */}
+        {/* Central Push-To-Talk Button with Live Visual Feedback */}
         <div className="flex flex-col items-center justify-center py-4">
           <div className="relative">
             {/* Pulsating Radar Rings when RECORDING */}
-            {recorder.recordingState === 'RECORDING' && (
+            {isStreamingRecording && (
               <>
-                <span className="absolute -inset-4 rounded-full bg-rose-500/20 animate-ping" />
-                <span className="absolute -inset-8 rounded-full bg-rose-500/10 animate-pulse" />
+                <span className="absolute -inset-4 rounded-full bg-rose-500/25 animate-ping" />
+                <span className="absolute -inset-8 rounded-full bg-rose-500/15 animate-pulse" />
               </>
             )}
 
             <button
-              onClick={() => void handleMicToggle()}
-              disabled={isProcessing}
+              onClick={() => void handleMicMouseDown()}
+              disabled={isGlobalProcessing}
               aria-label={
-                recorder.recordingState === 'RECORDING'
+                isStreamingRecording
                   ? t.voice.releaseToStop
                   : t.voice.pressToTalk
               }
               className={`relative z-10 h-28 w-28 sm:h-32 sm:w-32 rounded-full flex flex-col items-center justify-center shadow-xl transition-all transform active:scale-95 focus:outline-none focus:ring-4 focus:ring-amber-500/40 ${
-                recorder.recordingState === 'RECORDING'
-                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/30'
+                isStreamingRecording
+                  ? 'bg-rose-600 hover:bg-rose-700 text-white shadow-rose-600/40'
                   : 'bg-amber-600 hover:bg-amber-700 text-white shadow-amber-600/30'
               }`}
             >
-              {recorder.recordingState === 'RECORDING' ? (
+              {isStreamingRecording ? (
                 <>
                   <Square className="h-10 w-10 fill-current animate-pulse" />
                   <span className="text-[11px] font-bold uppercase tracking-wider mt-1.5">
-                    {recorder.durationSeconds}s
+                    Streaming
+                  </span>
+                </>
+              ) : isStreamingProcessing ? (
+                <>
+                  <div className="h-8 w-8 border-3 border-white border-t-transparent rounded-full animate-spin" />
+                  <span className="text-[10px] font-bold uppercase tracking-wider mt-1.5">
+                    Parsing
                   </span>
                 </>
               ) : (
@@ -306,53 +353,90 @@ export const VoiceAssistant: React.FC = () => {
             </button>
           </div>
 
-          {/* Status announcement */}
-          <div className="mt-4 text-center">
-            {recorder.recordingState === 'RECORDING' && (
-              <div className="inline-flex items-center gap-2 text-rose-600 font-bold text-sm animate-pulse">
-                <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
-                <span>{t.voice.listening} ({recorder.durationSeconds}s)</span>
-              </div>
-            )}
-            {recorder.recordingState === 'STOPPING' && (
-              <span className="text-stone-600 text-sm font-medium">Stopping recording...</span>
-            )}
-            {recorder.recordingState === 'TRANSCRIPT_READY' && recorder.audioUrl && (
-              <div className="flex flex-col items-center gap-2 mt-2">
-                <span className="text-emerald-700 text-xs font-bold uppercase tracking-wider">
-                  Audio Captured ({recorder.audioBlob ? (recorder.audioBlob.size / 1024).toFixed(1) : 0} KB)
-                </span>
-                {/* Audio playback preview */}
-                <div className="flex items-center gap-2 bg-stone-100 p-2 rounded-xl border border-stone-200">
-                  <Volume2 className="h-4 w-4 text-stone-600 ml-1" />
-                  <audio controls src={recorder.audioUrl} className="h-8 max-w-[220px]" />
-                  <button
-                    onClick={recorder.cancelRecording}
-                    className="p-1.5 text-stone-500 hover:text-stone-800 rounded-lg hover:bg-stone-200"
-                    title={t.voice.discardAudio}
-                  >
-                    <RotateCcw className="h-4 w-4" />
-                  </button>
+          {/* Status announcement and Live Partial Transcript */}
+          <div className="mt-4 text-center max-w-lg">
+            {isStreamingRecording && (
+              <div className="space-y-1.5">
+                <div className="inline-flex items-center gap-2 text-rose-600 font-bold text-sm animate-pulse">
+                  <span className="h-2.5 w-2.5 rounded-full bg-rose-600" />
+                  <span>Listening... (16 kHz Linear PCM)</span>
                 </div>
+                {voiceWs.partialTranscript && (
+                  <p className="text-stone-800 text-base font-semibold italic bg-stone-50 px-4 py-2 rounded-xl border border-stone-200">
+                    "{voiceWs.partialTranscript}"
+                  </p>
+                )}
               </div>
             )}
-            {recorder.errorMessage && (
-              <div className="mt-2 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm font-medium flex items-center gap-2">
+
+            {isStreamingProcessing && (
+              <div className="inline-flex items-center gap-2 text-amber-700 font-medium text-sm">
+                <div className="h-3 w-3 border-2 border-amber-600 border-t-transparent rounded-full animate-spin" />
+                <span>Processing utterance through Groq Intent Engine...</span>
+              </div>
+            )}
+
+            {/* TTS Audio Playback Indicator with Interruption Button */}
+            {voiceWs.isPlayingTTS && (
+              <div className="mt-2 inline-flex items-center gap-3 px-4 py-2 bg-emerald-50 border border-emerald-200 rounded-full text-emerald-800 text-xs font-semibold shadow-sm animate-pulse">
+                <Volume2 className="h-4 w-4 text-emerald-600 shrink-0" />
+                <span>Speaking Confirmation (Timbre v3.0)...</span>
+                <button
+                  onClick={voiceWs.stopAudioPlayback}
+                  className="inline-flex items-center gap-1 px-2 py-0.5 bg-white border border-emerald-300 hover:bg-emerald-100 rounded-md text-[11px] text-emerald-900 transition-colors"
+                  title="Interrupt speech playback"
+                >
+                  <VolumeX className="h-3 w-3" />
+                  <span>Stop</span>
+                </button>
+              </div>
+            )}
+
+            {/* Error notifications */}
+            {(voiceWs.errorMessage || manualErrorMessage) && (
+              <div className="mt-2 p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm font-medium flex items-center gap-2 text-left">
                 <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-                <span>{recorder.errorMessage}</span>
+                <span>{voiceWs.errorMessage || manualErrorMessage}</span>
               </div>
             )}
           </div>
         </div>
 
-        {/* Phase 5 Audio Streaming Note */}
-        <div className="bg-amber-50/60 border border-amber-200/80 rounded-2xl p-3.5 flex items-start gap-2.5 text-xs text-amber-900">
-          <Info className="h-4 w-4 text-amber-700 shrink-0 mt-0.5" />
-          <div>
-            <span className="font-bold">Phase 4 Voice Contract: </span>
-            {t.voice.phase5Notice}
+        {/* Read-Only Query Response (QUERY_BALANCE) */}
+        {voiceWs.readOnlyResponse && (
+          <div className="bg-sky-50 border border-sky-200 rounded-2xl p-4 sm:p-5 text-sky-900 space-y-2">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <CheckCircle2 className="h-5 w-5 text-sky-600" />
+                <span className="font-bold text-sm">Customer Balance Inquiry (Read-Only)</span>
+              </div>
+              <span className="text-[11px] font-bold px-2.5 py-0.5 bg-sky-200 text-sky-800 rounded-full">
+                0 Database Mutations
+              </span>
+            </div>
+            <p className="text-base font-semibold text-stone-900">
+              {voiceWs.readOnlyResponse.spoken_response}
+            </p>
+            {voiceWs.readOnlyResponse.data?.outstanding_balance && (
+              <div className="text-2xl font-black text-sky-800 mt-1">
+                ₹{Number(voiceWs.readOnlyResponse.data.outstanding_balance).toFixed(2)}
+              </div>
+            )}
           </div>
-        </div>
+        )}
+
+        {/* Clarification Required Card (UNKNOWN or Incomplete Intent) */}
+        {voiceWs.clarification && (
+          <div className="bg-amber-50 border border-amber-200 rounded-2xl p-4 sm:p-5 text-amber-900 space-y-2">
+            <div className="flex items-center gap-2">
+              <HelpCircle className="h-5 w-5 text-amber-600" />
+              <span className="font-bold text-sm">Clarification Required</span>
+            </div>
+            <p className="text-sm font-medium text-stone-800">
+              {voiceWs.clarification.spoken_response}
+            </p>
+          </div>
+        )}
 
         {/* Quick Voice Command Pills */}
         <div className="space-y-2.5 pt-2 border-t border-stone-100">
@@ -367,7 +451,7 @@ export const VoiceAssistant: React.FC = () => {
                   setCustomTranscript(ex.text);
                   void handleProcessTranscript(ex.text);
                 }}
-                disabled={isProcessing}
+                disabled={isGlobalProcessing}
                 className="inline-flex items-center gap-1.5 px-3 py-2 bg-stone-50 hover:bg-amber-50 hover:border-amber-300 text-stone-800 text-xs font-medium rounded-xl border border-stone-200/80 transition-all text-left"
               >
                 <Sparkles className="h-3 w-3 text-amber-600 shrink-0" />
@@ -377,7 +461,7 @@ export const VoiceAssistant: React.FC = () => {
           </div>
         </div>
 
-        {/* Custom Text / Utterance Input */}
+        {/* Custom Text / Utterance Input Fallback */}
         <div className="pt-2">
           <form
             onSubmit={(e) => {
@@ -395,10 +479,10 @@ export const VoiceAssistant: React.FC = () => {
             />
             <button
               type="submit"
-              disabled={isProcessing || !customTranscript.trim()}
+              disabled={isGlobalProcessing || !customTranscript.trim()}
               className="inline-flex items-center gap-2 px-5 py-3 bg-amber-600 hover:bg-amber-700 text-white text-sm font-bold rounded-xl shadow-sm transition-all disabled:opacity-50 min-h-[48px]"
             >
-              {isProcessing ? (
+              {isProcessingManual ? (
                 <>
                   <div className="h-4 w-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
                   <span>Processing...</span>
@@ -412,14 +496,6 @@ export const VoiceAssistant: React.FC = () => {
             </button>
           </form>
         </div>
-
-        {/* Local Error Message */}
-        {errorMessage && (
-          <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 rounded-xl text-xs sm:text-sm font-medium flex items-center gap-2">
-            <AlertCircle className="h-4 w-4 shrink-0 text-rose-600" />
-            <span>{errorMessage}</span>
-          </div>
-        )}
       </div>
 
       {/* Customer Disambiguation Prompt (if multiple customers match) */}
@@ -448,15 +524,16 @@ export const VoiceAssistant: React.FC = () => {
           proposal={activeProposal}
           stagedProposal={stagedProposal}
           onCommitted={(_res: LedgerCommitResponse) => {
-            // Leave card in committed state so merchant sees receipt
+            // Keep receipt visible for merchant audit
           }}
           onRejected={(_id: string) => {
-            // Leave card in rejected state
+            // Keep card in rejected state
           }}
           onCancel={() => {
             setActiveProposal(null);
             setStagedProposal(null);
             setLastParsedTranscript(null);
+            voiceWs.clearProposal();
           }}
           onAmbiguityDetected={(custName) => void checkCustomerAmbiguity(custName)}
         />

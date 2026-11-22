@@ -381,12 +381,13 @@ class TestEndToEndVoiceWorkflow:
 
         # Step 2: Merchant confirms credit in UI
         commit_resp = client.post(
-            f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
+            "/api/v1/ledger/commit",
             json={
                 "proposal_id": proposal_id,
                 "confirmed": True,
                 "actor_type": "merchant",
             },
+            headers={"X-Store-Id": test_store.id},
         )
         assert commit_resp.status_code == 200
         commit_data = commit_resp.json()
@@ -397,12 +398,13 @@ class TestEndToEndVoiceWorkflow:
 
         # Step 3: Replay commit attempt is deduplicated safely
         replay_resp = client.post(
-            f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
+            "/api/v1/ledger/commit",
             json={
                 "proposal_id": proposal_id,
                 "confirmed": True,
                 "actor_type": "merchant",
             },
+            headers={"X-Store-Id": test_store.id},
         )
         assert replay_resp.status_code == 200
         replay_data = replay_resp.json()
@@ -444,12 +446,13 @@ class TestEndToEndVoiceWorkflow:
 
         # Step 5: Merchant confirms payment in UI
         commit_payment_resp = client.post(
-            f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
+            "/api/v1/ledger/commit",
             json={
                 "proposal_id": payment_proposal_id,
                 "confirmed": True,
                 "actor_type": "merchant",
             },
+            headers={"X-Store-Id": test_store.id},
         )
         assert commit_payment_resp.status_code == 200
         payment_data = commit_payment_resp.json()

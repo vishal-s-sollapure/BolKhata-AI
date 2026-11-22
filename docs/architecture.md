@@ -216,6 +216,11 @@ To protect against network dropouts and repeated button presses in busy retail s
 ### Voice Intent Parsing (`/api/v1/intent`)
 - `POST /api/v1/intent/parse`: Parse speech transcript into TransactionProposal (zero DB writes)
 
+### Real-Time Voice Streaming (`/api/v1/voice`)
+- `WS /api/v1/voice/stream`: Bidirectional audio streaming WebSocket proxy (Gnani Prisma v3.0 STT + Groq IntentParser + Proposal Staging + Gnani Timbre v3.0 TTS)
+- `POST /api/v1/voice/process-transcript`: REST endpoint to process spoken transcript into staged proposal
+- `POST /api/v1/voice/synthesize`: REST endpoint to synthesize text into localized Kirana speech audio
+
 ---
 
 ## 9. Migration & Schema Strategy
