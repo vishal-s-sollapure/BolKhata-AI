@@ -18,6 +18,7 @@ Covers:
    - Payment voice utterance -> Staged proposal -> UI Merchant Commit -> Balance ₹140.
 """
 
+import uuid
 from decimal import Decimal
 from unittest.mock import AsyncMock, patch
 import pytest
@@ -53,19 +54,19 @@ class TestVoiceWebSocketConnection:
 
     def test_websocket_session_started_explicit_store(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
     ):
         """Verifies connecting with a valid store_id query param binds that store."""
-        with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+        with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
             init_msg = ws.receive_json()
             assert init_msg["event"] == "SESSION_STARTED"
             assert init_msg["store_id"] == test_store.id
 
-    def test_websocket_rejects_invalid_store(self, test_client: TestClient):
+    def test_websocket_rejects_invalid_store(self, client: TestClient):
         """Verifies connecting with non-existent store_id is rejected."""
         try:
-            with test_client.websocket_connect("/api/v1/voice/stream?store_id=00000000-dead-beef-0000-000000000000") as ws:
+            with client.websocket_connect("/api/v1/voice/stream?store_id=00000000-dead-beef-0000-000000000000") as ws:
                 err_msg = ws.receive_json()
                 assert err_msg["event"] == "ERROR"
                 assert err_msg["code"] == "STORE_NOT_FOUND"
@@ -73,9 +74,9 @@ class TestVoiceWebSocketConnection:
             # WebSocket closed with code 4004
             pass
 
-    def test_websocket_ping_pong(self, test_client: TestClient):
+    def test_websocket_ping_pong(self, client: TestClient):
         """Verifies keepalive PING/PONG control frames."""
-        with test_client.websocket_connect("/api/v1/voice/stream") as ws:
+        with client.websocket_connect("/api/v1/voice/stream") as ws:
             ws.receive_json()  # SESSION_STARTED
 
             ws.send_json({"action": "PING", "timestamp": 1700000000})
@@ -83,9 +84,9 @@ class TestVoiceWebSocketConnection:
             assert resp["event"] == "PONG"
             assert resp["timestamp"] == 1700000000
 
-    def test_websocket_cancel_session(self, test_client: TestClient):
+    def test_websocket_cancel_session(self, client: TestClient):
         """Verifies CANCEL_SESSION triggers SESSION_ENDED without staging."""
-        with test_client.websocket_connect("/api/v1/voice/stream") as ws:
+        with client.websocket_connect("/api/v1/voice/stream") as ws:
             ws.receive_json()  # SESSION_STARTED
 
             ws.send_json({"action": "CANCEL_SESSION"})
@@ -93,9 +94,9 @@ class TestVoiceWebSocketConnection:
             assert resp["event"] == "SESSION_ENDED"
             assert resp["reason"] == "canceled_by_client"
 
-    def test_websocket_binary_pcm_stream(self, test_client: TestClient):
+    def test_websocket_binary_pcm_stream(self, client: TestClient):
         """Verifies streaming raw 16kHz S16LE PCM chunks does not crash server."""
-        with test_client.websocket_connect("/api/v1/voice/stream") as ws:
+        with client.websocket_connect("/api/v1/voice/stream") as ws:
             ws.receive_json()  # SESSION_STARTED
 
             # Send 5 chunks of 1024 bytes (even byte count)
@@ -114,7 +115,7 @@ class TestVoiceOrchestratorSafety:
 
     def test_voice_credit_stages_proposal_without_auto_commit(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
         db_session: Session,
     ):
@@ -137,7 +138,7 @@ class TestVoiceOrchestratorSafety:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_proposal
 
-            with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+            with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
                 ws.receive_json()  # SESSION_STARTED
 
                 # Send simulated transcript
@@ -156,6 +157,7 @@ class TestVoiceOrchestratorSafety:
                 assert ev2["event"] == "PROCESSING"
 
                 ev3 = ws.receive_json()
+                print("DEBUG EV3:", ev3)
                 assert ev3["event"] == "PROPOSAL_READY"
                 assert ev3["proposal"]["intent"] == "ADD_CREDIT"
                 assert ev3["proposal"]["customer_name"] == "Ramesh"
@@ -190,7 +192,7 @@ class TestVoiceOrchestratorSafety:
 
     def test_voice_query_balance_is_read_only(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
         test_customer: Customer,
         db_session: Session,
@@ -222,7 +224,7 @@ class TestVoiceOrchestratorSafety:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_proposal
 
-            with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+            with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
                 ws.receive_json()  # SESSION_STARTED
 
                 ws.send_json({
@@ -246,7 +248,7 @@ class TestVoiceOrchestratorSafety:
 
     def test_voice_unknown_intent_requests_clarification(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
     ):
         """Voice utterance with UNKNOWN intent must ask merchant to clarify."""
@@ -264,7 +266,7 @@ class TestVoiceOrchestratorSafety:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_proposal
 
-            with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+            with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
                 ws.receive_json()  # SESSION_STARTED
 
                 ws.send_json({
@@ -285,7 +287,7 @@ class TestVoiceRESTEndpoints:
 
     def test_rest_process_transcript_credit(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
         db_session: Session,
     ):
@@ -306,7 +308,7 @@ class TestVoiceRESTEndpoints:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_proposal
 
-            resp = test_client.post(
+            resp = client.post(
                 f"/api/v1/voice/process-transcript?store_id={test_store.id}",
                 json={"transcript": "सुरेश को 250 रुपये उधार दो", "language": "hi-IN"},
             )
@@ -318,9 +320,9 @@ class TestVoiceRESTEndpoints:
             assert data["staged_proposal"]["amount"] == "250.00"
             assert "सुरेश" in data["spoken_response"]
 
-    def test_rest_synthesize_endpoint(self, test_client: TestClient):
+    def test_rest_synthesize_endpoint(self, client: TestClient):
         """POST /api/v1/voice/synthesize returns synthesized response."""
-        resp = test_client.post(
+        resp = client.post(
             "/api/v1/voice/synthesize",
             json={"text": "ನಮಸ್ಕಾರ", "language": "kn-IN"},
         )
@@ -336,7 +338,7 @@ class TestEndToEndVoiceWorkflow:
 
     def test_full_credit_and_payment_cycle(
         self,
-        test_client: TestClient,
+        client: TestClient,
         test_store: KiranaStore,
         test_customer: Customer,
         db_session: Session,
@@ -369,7 +371,7 @@ class TestEndToEndVoiceWorkflow:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_credit_proposal
 
-            with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+            with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
                 ws.receive_json()  # SESSION_STARTED
 
                 ws.send_json({
@@ -385,7 +387,7 @@ class TestEndToEndVoiceWorkflow:
                 proposal_id = res["staged_proposal"]["proposal_id"]
 
         # Step 2: Merchant confirms credit in UI
-        commit_resp = test_client.post(
+        commit_resp = client.post(
             f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
             json={
                 "proposal_id": proposal_id,
@@ -401,7 +403,7 @@ class TestEndToEndVoiceWorkflow:
         assert commit_data["is_duplicate"] is False
 
         # Step 3: Replay commit attempt is deduplicated safely
-        replay_resp = test_client.post(
+        replay_resp = client.post(
             f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
             json={
                 "proposal_id": proposal_id,
@@ -431,7 +433,7 @@ class TestEndToEndVoiceWorkflow:
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
             mock_parse.return_value = mock_payment_proposal
 
-            with test_client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
+            with client.websocket_connect(f"/api/v1/voice/stream?store_id={test_store.id}") as ws:
                 ws.receive_json()  # SESSION_STARTED
 
                 ws.send_json({
@@ -447,7 +449,7 @@ class TestEndToEndVoiceWorkflow:
                 payment_proposal_id = res2["staged_proposal"]["proposal_id"]
 
         # Step 5: Merchant confirms payment in UI
-        commit_payment_resp = test_client.post(
+        commit_payment_resp = client.post(
             f"/api/v1/ledger/proposals/commit?store_id={test_store.id}",
             json={
                 "proposal_id": payment_proposal_id,
