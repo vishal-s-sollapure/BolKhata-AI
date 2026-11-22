@@ -167,15 +167,6 @@ class TestVoiceOrchestratorSafety:
                 assert "Ramesh" in ev3["spoken_response"]
                 assert "340.00" in ev3["spoken_response"]
 
-                # Check if optional TTS_AUDIO was emitted
-                # ws may have TTS_AUDIO next
-                try:
-                    ev4 = ws.receive_json()
-                    if ev4.get("event") == "TTS_AUDIO":
-                        assert "session_id" in ev4
-                except Exception:
-                    pass
-
         # CRITICAL VERIFICATION: Zero ledger mutations occurred
         final_entries = db_session.query(KhataEntry).filter(KhataEntry.store_id == test_store.id).count()
         assert final_entries == initial_entries, "Voice speech MUST NOT create KhataEntry before explicit merchant confirmation!"
