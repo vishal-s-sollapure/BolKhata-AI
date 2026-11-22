@@ -80,6 +80,7 @@ async def voice_streaming_endpoint(
     websocket: WebSocket,
     store_id: Optional[str] = Query(None, description="Optional Kirana Store UUID"),
     lang: Optional[str] = Query("indic-auto", description="Initial language code"),
+    db: Session = Depends(get_db),
 ):
     """Bidirectional WebSocket streaming interface for merchant voice interactions.
     
@@ -99,7 +100,6 @@ async def voice_streaming_endpoint(
     await websocket.accept()
 
     session_id = str(uuid.uuid4())
-    db: Session = SessionLocal()
 
     # 1. Resolve store context
     try:
@@ -116,7 +116,6 @@ async def voice_streaming_endpoint(
                     "message": f"Active Kirana store '{resolved_store_id}' was not found.",
                 })
                 await websocket.close(code=4004)
-                db.close()
                 return
     except Exception as e:
         logger.error("Error resolving store in voice websocket: %s", e)
@@ -126,7 +125,6 @@ async def voice_streaming_endpoint(
             "message": "Failed to initialize store context.",
         })
         await websocket.close(code=1011)
-        db.close()
         return
 
     # 2. Emit SESSION_STARTED frame
@@ -332,7 +330,6 @@ async def voice_streaming_endpoint(
         if stt_connected:
             await stt_client.close()
 
-        db.close()
         logger.info("Session %s cleaned up successfully.", session_id[:8])
 
 

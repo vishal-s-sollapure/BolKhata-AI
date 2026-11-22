@@ -37,18 +37,12 @@ from app.services.intent_service import IntentService
 from app.services.voice_orchestrator import VoiceOrchestrator
 
 
-@pytest.fixture
-def test_client():
-    """Test client for HTTP and WebSocket requests."""
-    return TestClient(app)
-
-
 class TestVoiceWebSocketConnection:
     """Tests WebSocket handshake, session initialization, and store isolation."""
 
-    def test_websocket_session_started_default_store(self, test_client: TestClient):
+    def test_websocket_session_started_default_store(self, client: TestClient, test_store: KiranaStore):
         """Verifies successful WebSocket connection emits SESSION_STARTED with audio format."""
-        with test_client.websocket_connect("/api/v1/voice/stream") as ws:
+        with client.websocket_connect("/api/v1/voice/stream") as ws:
             init_msg = ws.receive_json()
             assert init_msg["event"] == "SESSION_STARTED"
             assert "session_id" in init_msg
