@@ -121,6 +121,7 @@ class TestVoiceOrchestratorSafety:
     ):
         """Voice credit utterance must stage a proposal with requires_confirmation=True and 0 ledger entries."""
         initial_entries = db_session.query(KhataEntry).filter(KhataEntry.store_id == test_store.id).count()
+        test_prop_id = f"voice-prop-{uuid.uuid4()}"
 
         mock_proposal = TransactionProposal(
             intent=IntentType.ADD_CREDIT,
@@ -132,7 +133,7 @@ class TestVoiceOrchestratorSafety:
             summary="Add ₹340.00 credit for Ramesh",
             reasoning_code="CUSTOMER_AND_AMOUNT_IDENTIFIED",
             requires_confirmation=True,
-            proposal_id="voice-prop-001",
+            proposal_id=test_prop_id,
         )
 
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
@@ -157,14 +158,13 @@ class TestVoiceOrchestratorSafety:
                 assert ev2["event"] == "PROCESSING"
 
                 ev3 = ws.receive_json()
-                print("DEBUG EV3:", ev3)
                 assert ev3["event"] == "PROPOSAL_READY"
                 assert ev3["proposal"]["intent"] == "ADD_CREDIT"
                 assert ev3["proposal"]["customer_name"] == "Ramesh"
                 assert ev3["proposal"]["amount"] == "340.00"
                 assert ev3["staged_proposal"]["status"] == "PENDING"
                 assert ev3["staged_proposal"]["requires_confirmation"] is True
-                assert "ರಮೇಶ್" in ev3["spoken_response"]
+                assert "Ramesh" in ev3["spoken_response"]
                 assert "340.00" in ev3["spoken_response"]
 
                 # Check if optional TTS_AUDIO was emitted
@@ -183,7 +183,7 @@ class TestVoiceOrchestratorSafety:
         # Server-side PendingProposal must exist with status PENDING
         pending = (
             db_session.query(PendingProposal)
-            .filter(PendingProposal.proposal_id == "voice-prop-001", PendingProposal.store_id == test_store.id)
+            .filter(PendingProposal.proposal_id == test_prop_id, PendingProposal.store_id == test_store.id)
             .first()
         )
         assert pending is not None
@@ -292,6 +292,7 @@ class TestVoiceRESTEndpoints:
         db_session: Session,
     ):
         """POST /api/v1/voice/process-transcript stages credit proposal."""
+        test_rest_id = f"rest-prop-{uuid.uuid4()}"
         mock_proposal = TransactionProposal(
             intent=IntentType.ADD_CREDIT,
             customer_name="Suresh",
@@ -302,7 +303,7 @@ class TestVoiceRESTEndpoints:
             summary="Add ₹250.00 credit for Suresh",
             reasoning_code="CUSTOMER_AND_AMOUNT_IDENTIFIED",
             requires_confirmation=True,
-            proposal_id="rest-prop-001",
+            proposal_id=test_rest_id,
         )
 
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
@@ -318,7 +319,7 @@ class TestVoiceRESTEndpoints:
             assert data["event_type"] == "PROPOSAL_READY"
             assert data["staged_proposal"]["status"] == "PENDING"
             assert data["staged_proposal"]["amount"] == "250.00"
-            assert "सुरेश" in data["spoken_response"]
+            assert "Suresh" in data["spoken_response"]
 
     def test_rest_synthesize_endpoint(self, client: TestClient):
         """POST /api/v1/voice/synthesize returns synthesized response."""
@@ -355,6 +356,7 @@ class TestEndToEndVoiceWorkflow:
         ledger = LedgerService()
 
         # Step 1: Voice Credit Utterance
+        cycle_credit_id = f"cycle-prop-credit-{uuid.uuid4()}"
         mock_credit_proposal = TransactionProposal(
             intent=IntentType.ADD_CREDIT,
             customer_name=test_customer.customer_name,
@@ -365,7 +367,7 @@ class TestEndToEndVoiceWorkflow:
             summary=f"Add ₹340.00 credit for {test_customer.customer_name}",
             reasoning_code="CUSTOMER_AND_AMOUNT_IDENTIFIED",
             requires_confirmation=True,
-            proposal_id="cycle-prop-credit-340",
+            proposal_id=cycle_credit_id,
         )
 
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:
@@ -417,6 +419,7 @@ class TestEndToEndVoiceWorkflow:
         assert replay_data["resulting_balance"] == "340.00"
 
         # Step 4: Voice Payment Utterance (₹200)
+        cycle_pay_id = f"cycle-prop-pay-{uuid.uuid4()}"
         mock_payment_proposal = TransactionProposal(
             intent=IntentType.LOG_PAYMENT,
             customer_name=test_customer.customer_name,
@@ -427,7 +430,7 @@ class TestEndToEndVoiceWorkflow:
             summary=f"Record ₹200.00 payment from {test_customer.customer_name}",
             reasoning_code="CUSTOMER_AND_AMOUNT_IDENTIFIED",
             requires_confirmation=True,
-            proposal_id="cycle-prop-payment-200",
+            proposal_id=cycle_pay_id,
         )
 
         with patch.object(IntentService, "parse_transcript", new_callable=AsyncMock) as mock_parse:

@@ -186,3 +186,101 @@ export interface CustomerDisambiguationResponse {
   message: string;
   candidates: CustomerDisambiguationCandidate[];
 }
+
+export type VoiceStreamStatus =
+  | 'disconnected'
+  | 'connecting'
+  | 'ready'
+  | 'recording'
+  | 'processing'
+  | 'playing_tts'
+  | 'error';
+
+export interface VoiceStreamStartedEvent {
+  event: 'SESSION_STARTED';
+  session_id: string;
+  store_id: string;
+  sample_rate: number;
+  format: string;
+  channels: number;
+  language: string;
+}
+
+export interface VoicePartialTranscriptEvent {
+  event: 'PARTIAL_TRANSCRIPT';
+  session_id: string;
+  transcript: string;
+  is_final: false;
+  language?: string;
+}
+
+export interface VoiceFinalTranscriptEvent {
+  event: 'FINAL_TRANSCRIPT';
+  session_id: string;
+  transcript: string;
+  is_final: true;
+  language?: string;
+  confidence?: number;
+}
+
+export interface VoiceProcessingEvent {
+  event: 'PROCESSING';
+  session_id: string;
+  status: string;
+}
+
+export interface VoiceProposalReadyEvent {
+  event: 'PROPOSAL_READY';
+  session_id: string;
+  proposal: TransactionProposal;
+  staged_proposal: PendingProposalResponse;
+  spoken_response: string;
+  audio_b64?: string | null;
+  audio_format: string;
+}
+
+export interface VoiceReadOnlyResponseEvent {
+  event: 'READ_ONLY_RESPONSE';
+  session_id: string;
+  intent: string;
+  data: Record<string, any>;
+  spoken_response: string;
+  audio_b64?: string | null;
+  audio_format: string;
+}
+
+export interface VoiceClarificationRequiredEvent {
+  event: 'CLARIFICATION_REQUIRED';
+  session_id: string;
+  transcript: string;
+  spoken_response: string;
+  audio_b64?: string | null;
+  audio_format: string;
+}
+
+export interface VoiceTTSAudioEvent {
+  event: 'TTS_AUDIO';
+  session_id: string;
+  audio_b64: string;
+  audio_format: string;
+  text?: string;
+}
+
+export interface VoiceErrorEvent {
+  event: 'ERROR';
+  session_id?: string;
+  code: string;
+  message: string;
+}
+
+export type VoiceServerEvent =
+  | VoiceStreamStartedEvent
+  | VoicePartialTranscriptEvent
+  | VoiceFinalTranscriptEvent
+  | VoiceProcessingEvent
+  | VoiceProposalReadyEvent
+  | VoiceReadOnlyResponseEvent
+  | VoiceClarificationRequiredEvent
+  | VoiceTTSAudioEvent
+  | VoiceErrorEvent;
+
