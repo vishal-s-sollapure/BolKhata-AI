@@ -29,15 +29,7 @@ async def lifespan(app: FastAPI):
         Base.metadata.create_all(bind=engine)
         init_db_triggers(engine)
         with SessionLocal() as db:
-            store = StoreService.get_or_create_default_store(db)
-            # If fresh database has <= 1 customer, seed demo data for instant out-of-the-box readiness
-            from app.models.customer import Customer
-            if db.query(Customer).filter(Customer.store_id == store.id).count() <= 1:
-                try:
-                    from scripts.seed_demo_data import seed_database
-                    seed_database()
-                except Exception as seed_err:
-                    logger.warning("Could not auto-seed demo data: %s", seed_err)
+            StoreService.get_or_create_default_store(db)
         logger.info("Database initialized successfully with immutability triggers.")
     except Exception as e:
         logger.error("Failed to initialize database tables: %s", str(e))
