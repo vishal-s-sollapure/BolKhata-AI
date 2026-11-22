@@ -266,6 +266,11 @@ async def voice_streaming_endpoint(
                             await stt_client.send_audio_chunk(chunk)
                         except Exception as send_err:
                             logger.debug("Failed sending chunk to STT: %s", send_err)
+                else:
+                    logger.warning(
+                        "Rejected invalid or oversized PCM chunk (%d bytes)",
+                        len(chunk) if isinstance(chunk, (bytes, bytearray)) else 0,
+                    )
 
             # B. Text JSON control frames
             elif "text" in raw_msg and raw_msg["text"]:

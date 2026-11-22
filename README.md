@@ -60,8 +60,15 @@ BolKhata-AI/
 | **Database** | SQLite + SQLAlchemy ORM | SQLAlchemy 2.0+ | Lightweight transactional digital ledger |
 | **Speech STT** | Gnani Prisma v3.0 | WebSocket Streaming | Real-time multilingual voice transcription |
 | **Speech TTS** | Gnani Timbre v3.0 | WebSocket Streaming | Real-time Indian language audio feedback |
-| **Intent LLM** | Groq (Llama 3.3 70B Versatile) | Groq SDK | Structured transaction proposal generation |
-| **Testing** | Pytest, Pytest-asyncio, HTTPX | Pytest 9+ | Automated unit, API, and architectural tests |
+| **Intent LLM** | Groq (Qwen 27B / Llama 3.3 70B) | Groq SDK | Structured transaction proposal generation |
+| **Testing** | Pytest, Vitest, HTTPX | Pytest 9+, Vitest 4+ | 136 backend tests & 33 frontend tests |
+
+---
+
+## 🎬 Live Demonstration & Judge Presentation Guide
+
+For a 2–3 minute video demonstration script, judge Q&A defense cheat sheet, and exact spoken Kannada/Hindi/English phrases, refer to:
+👉 **[Phase 5.2 Demo Readiness & Judge Presentation Guide](docs/PHASE_5_2_DEMO_READINESS_GUIDE.md)**
 
 ---
 

@@ -159,14 +159,14 @@ class VoiceOrchestrator:
                 return f"{c_name} से ₹{amt_str} जमा दर्ज करने के लिए तैयार है। कृपया पुष्टि करें।"
             return f"Ready to record ₹{amt_str} payment from {c_name}. Please confirm."
 
-        elif intent == IntentType.QUERY_BALANCE:
+        elif intent in (IntentType.QUERY_BALANCE, IntentType.CHECK_BALANCE):
             if norm_lang == "kn-IN":
                 return f"{c_name} ಅವರ ಬಾಕಿ ಮೊತ್ತ ₹{bal_str} ಆಗಿದೆ."
             elif norm_lang == "hi-IN":
                 return f"{c_name} का कुल बकाया ₹{bal_str} है।"
             return f"The outstanding balance for {c_name} is ₹{bal_str}."
 
-        elif intent == IntentType.LIST_DUES:
+        elif intent in (IntentType.LIST_DUES, IntentType.LIST_RECENT_TRANSACTIONS):
             if norm_lang == "kn-IN":
                 return f"ಬಾಕಿ ಪಟ್ಟಿಯನ್ನು ಡ್ಯಾಶ್‌ಬೋರ್ಡ್‌ನಲ್ಲಿ ಪ್ರದರ್ಶಿಸಲಾಗಿದೆ."
             elif norm_lang == "hi-IN":
@@ -307,7 +307,7 @@ class VoiceOrchestrator:
                 audio_bytes=audio,
             )
 
-        elif proposal.intent == IntentType.QUERY_BALANCE:
+        elif proposal.intent in (IntentType.QUERY_BALANCE, IntentType.CHECK_BALANCE):
             # Read-only query -> NO MUTATION
             if not proposal.customer_name:
                 spoken = (
@@ -385,7 +385,7 @@ class VoiceOrchestrator:
                 audio_bytes=audio,
             )
 
-        elif proposal.intent == IntentType.LIST_DUES:
+        elif proposal.intent in (IntentType.LIST_DUES, IntentType.LIST_RECENT_TRANSACTIONS):
             summary = self.ledger_service.get_store_ledger_summary(store_id=store_id, db=db)
             spoken = self.generate_spoken_prompt(
                 intent=IntentType.LIST_DUES,

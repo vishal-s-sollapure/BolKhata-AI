@@ -25,6 +25,7 @@ CHANNELS_MONO = 1
 STREAM_CHUNK_SAMPLES = 512
 STREAM_CHUNK_BYTES = STREAM_CHUNK_SAMPLES * SAMPLE_WIDTH_16BIT  # 1024 bytes
 FRAME_DURATION_MS = (STREAM_CHUNK_SAMPLES / SAMPLE_RATE_16K) * 1000  # 32.0 ms
+MAX_PCM_CHUNK_BYTES = 65536  # 64 KB (~2 seconds of 16kHz mono audio; DoS limit)
 
 
 def validate_pcm_chunk(chunk: bytes, allow_partial: bool = False) -> bool:
@@ -37,6 +38,8 @@ def validate_pcm_chunk(chunk: bytes, allow_partial: bool = False) -> bool:
     if not isinstance(chunk, (bytes, bytearray)):
         return False
     if len(chunk) == 0 and not allow_partial:
+        return False
+    if len(chunk) > MAX_PCM_CHUNK_BYTES:
         return False
     # Each sample is 2 bytes (16-bit), so length must be an even integer
     return len(chunk) % SAMPLE_WIDTH_16BIT == 0

@@ -295,6 +295,11 @@ class TestAudioQualityAndFraming:
         assert validate_pcm_chunk(b"", allow_partial=False) is False
         assert validate_pcm_chunk(b"", allow_partial=True) is True
 
+    def test_validate_pcm_chunk_oversized_rejected(self):
+        """Oversized audio chunks exceeding MAX_PCM_CHUNK_BYTES (65536) must be rejected."""
+        oversized = b"\x00\x00" * 35000  # 70,000 bytes
+        assert validate_pcm_chunk(oversized) is False
+
 
 class TestSecurityAndPrivacy:
     """Verifies credential containment, tenant isolation, and error sanitization."""
