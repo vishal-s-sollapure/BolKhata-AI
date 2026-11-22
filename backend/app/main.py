@@ -68,26 +68,13 @@ app.add_middleware(
 # Register routes
 app.include_router(health_router, prefix="")
 app.include_router(health_router, prefix="/api")
+app.include_router(health_router, prefix="/api/v1")
 app.include_router(intent_router, prefix="/api")
 app.include_router(intent_router, prefix="/api/v1")
 app.include_router(customers_router, prefix="/api/v1")
 app.include_router(ledger_router, prefix="/api/v1")
 app.include_router(voice_router, prefix="/api")
 app.include_router(voice_router, prefix="/api/v1")
-
-
-@app.get("/", summary="Root API Information")
-async def root():
-    """Returns basic service identification and links to documentation and health status."""
-    return {
-        "service": settings.APP_NAME,
-        "tagline": "Your Kirana Store. Your Voice. Your Digital Khata.",
-        "status": "online",
-        "version": "0.1.0",
-        "docs": "/docs",
-        "health": "/health",
-    }
-
 
 
 @app.get("/", summary="Root API Information")
