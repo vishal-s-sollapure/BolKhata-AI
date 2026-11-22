@@ -123,9 +123,16 @@ export const useVoiceWebSocket = (options: UseVoiceWebSocketOptions = {}): UseVo
     setStatus('connecting');
     setErrorMessage(null);
 
-    const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-    const host = window.location.host;
-    let url = `${protocol}//${host}/api/v1/voice/stream?lang=${encodeURIComponent(language)}`;
+    const wsBaseUrl = import.meta.env.VITE_WS_URL;
+    let url: string;
+    if (wsBaseUrl) {
+      const sep = wsBaseUrl.includes('?') ? '&' : '?';
+      url = `${wsBaseUrl}${sep}lang=${encodeURIComponent(language)}`;
+    } else {
+      const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+      const host = window.location.host;
+      url = `${protocol}//${host}/api/v1/voice/stream?lang=${encodeURIComponent(language)}`;
+    }
     if (storeId) {
       url += `&store_id=${encodeURIComponent(storeId)}`;
     }
