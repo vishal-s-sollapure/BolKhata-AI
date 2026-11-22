@@ -11,6 +11,7 @@ from app.api.health import router as health_router
 from app.api.intent import router as intent_router
 from app.api.customers import router as customers_router
 from app.api.ledger import router as ledger_router
+from app.api.voice import router as voice_router
 from app.utils.logger import configure_logger
 
 settings = get_settings()
@@ -63,6 +64,8 @@ app.include_router(intent_router, prefix="/api")
 app.include_router(intent_router, prefix="/api/v1")
 app.include_router(customers_router, prefix="/api/v1")
 app.include_router(ledger_router, prefix="/api/v1")
+app.include_router(voice_router, prefix="/api")
+app.include_router(voice_router, prefix="/api/v1")
 
 
 @app.get("/", summary="Root API Information")
