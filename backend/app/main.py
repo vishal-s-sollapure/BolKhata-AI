@@ -1,5 +1,13 @@
 """Main FastAPI application entrypoint for BolKhata AI."""
 
+import os
+import sys
+
+# Ensure backend directory is in sys.path so 'app' can be imported from any working directory (e.g. Render/Docker root)
+_backend_dir = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+if _backend_dir not in sys.path:
+    sys.path.insert(0, _backend_dir)
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
