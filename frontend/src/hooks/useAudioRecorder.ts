@@ -34,7 +34,7 @@ export const useAudioRecorder = (): UseAudioRecorderResult => {
   const startTimeRef = useRef<number>(0);
 
   const isSupported = typeof window !== 'undefined' &&
-    Boolean(navigator.mediaDevices && navigator.mediaDevices.getUserMedia && window.MediaRecorder);
+    Boolean(navigator?.mediaDevices && typeof navigator.mediaDevices.getUserMedia === 'function' && window.MediaRecorder);
 
   // Stop all active tracks on the microphone stream
   const cleanupStream = useCallback(() => {

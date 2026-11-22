@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Users, UserCheck, Plus, Phone, AlertTriangle } from 'lucide-react';
+import { UserCheck, Plus, Phone, AlertTriangle } from 'lucide-react';
 import { CustomerDisambiguationCandidate } from '../types/api';
 import { useStore } from '../context/StoreContext';
 

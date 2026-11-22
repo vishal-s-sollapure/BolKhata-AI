@@ -7,9 +7,7 @@
 import React, { useState } from 'react';
 import {
   Mic,
-  MicOff,
   Square,
-  Play,
   RotateCcw,
   Sparkles,
   Info,

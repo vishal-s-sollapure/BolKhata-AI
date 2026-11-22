@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { ArrowLeft, User, Phone, Calendar, RefreshCw, AlertCircle } from 'lucide-react';
+import { ArrowLeft, Phone, Calendar, RefreshCw, AlertCircle } from 'lucide-react';
 import { Customer, CustomerBalanceResponse, KhataEntryResponse } from '../types/api';
 import { apiClient } from '../api/client';
 import { useStore } from '../context/StoreContext';

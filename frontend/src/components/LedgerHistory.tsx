@@ -1,5 +1,5 @@
 import React from 'react';
-import { ArrowUpRight, ArrowDownLeft, Clock, Hash, CheckCircle2 } from 'lucide-react';
+import { ArrowUpRight, ArrowDownLeft, Clock, CheckCircle2 } from 'lucide-react';
 import { KhataEntryResponse } from '../types/api';
 import { useStore } from '../context/StoreContext';
 
