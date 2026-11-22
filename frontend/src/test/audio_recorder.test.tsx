@@ -70,7 +70,7 @@ describe('useAudioRecorder Hook', () => {
 
   it('handles microphone permission denial gracefully', async () => {
     const permError = new DOMException('Permission denied', 'NotAllowedError');
-    // @ts-expect-error Mocking getUserMedia rejection
+    // Mock getUserMedia rejection
     navigator.mediaDevices.getUserMedia = vi.fn().mockRejectedValue(permError);
 
     const { result } = renderHook(() => useAudioRecorder());
@@ -84,6 +84,9 @@ describe('useAudioRecorder Hook', () => {
   });
 
   it('records audio and transitions to TRANSCRIPT_READY when stopped', async () => {
+    let currentTime = 1000000;
+    vi.spyOn(Date, 'now').mockImplementation(() => currentTime);
+
     const { result } = renderHook(() => useAudioRecorder());
 
     await act(async () => {
@@ -92,7 +95,9 @@ describe('useAudioRecorder Hook', () => {
 
     expect(result.current.recordingState).toBe('RECORDING');
 
-    // Simulate stopping after recording
+    // Simulate 1.5 seconds of recording to exceed the 0.3s minimum duration check
+    currentTime += 1500;
+
     await act(async () => {
       await result.current.stopRecording();
     });
