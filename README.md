@@ -193,4 +193,21 @@ tests/test_monorepo.py::test_monorepo_structure PASSED
 - [x] Critical safety test proving zero database mutations from intent parsing alone.
 - [x] 97 unit, model, ledger, idempotency, HITL, audit, API, and safety tests passing.
 
+### Phase 3.1: Financial Integrity, Security & Concurrency Verification (Completed)
+- [x] Database-level immutability triggers on `khata_entries` and `audit_logs` preventing raw SQL UPDATE/DELETE.
+- [x] Real multi-threaded concurrency verification with thread-safe idempotent replay handling.
+- [x] Server-side authoritative HITL proposal tamper-proofing and explicit proposal rejection endpoint (`/proposals/{id}/reject`).
+- [x] Anti-merging customer identity disambiguation with `CustomerAmbiguityError` (HTTP 409).
+- [x] 112 unit, model, ledger, idempotency, HITL, audit, API, and concurrency tests passing.
+
+### Phase 4: Push-To-Talk Merchant Frontend & HITL Confirmation UI (Completed)
+- [x] Mobile-first merchant UI in warm ivory/cream palette with accessible 48px+ tap targets.
+- [x] Push-To-Talk browser microphone interface using MediaRecorder API with audio preview playback.
+- [x] Authoritative HITL proposal confirmation card with stable idempotency keys and double-click prevention.
+- [x] Trilingual localization for Kannada (ಕನ್ನಡ), Hindi (हिन्दी), and Indian English.
+- [x] Customer management, disambiguation selector, and chronological immutable ledger history.
+- [x] 20 frontend Vitest/Testing Library unit tests passing (100% pass rate).
+- [x] Clean frontend production build (`tsc -b && vite build`).
+
+
 
